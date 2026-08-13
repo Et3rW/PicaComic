@@ -1,26 +1,19 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io' as io;
 
 import 'package:pica_comic/base.dart';
 import 'package:pica_comic/components/components.dart';
 import 'package:pica_comic/foundation/app.dart';
+import 'package:pica_comic/foundation/log.dart';
 import 'package:pica_comic/network/nhentai_network/nhentai_main_network.dart';
 import 'package:pica_comic/pages/webview.dart';
 import 'package:pica_comic/tools/translations.dart';
 
-/// 登录 nhentai。
-///
-/// 完成检测**不再依赖页面标题**。nhentai 已改为 Svelte SPA:
-/// - 登录页标题就是 "nhentai"(不含 Login/Register),旧逻辑会在打开页面
-///   的瞬间(桌面端每 2 秒轮询一次标题)误判为"已登录完成",在用户真正
-///   登录前就保存空 cookie 并关闭流程;
-/// - 登录成功后跳转的主页标题与登录页相同,基于"标题变化"的检测又
-///   根本不会触发。
-///
-/// 新逻辑:轮询 webview 的 cookie,**只要出现 sessionid**(唯一可信的登录
-/// 凭据)即视为登录成功,保存 cookie 并结束流程。
+/// Opens nhentai's SPA login page and detects credentials exposed through
+/// either the native cookie store or browser storage.
 void nhLogin(void Function() onFinished) async {
-  var active = true; // webview 关闭(无论成败)后置 false
+  var active = true;
   var completed = false;
   Timer? timer;
 
@@ -29,103 +22,122 @@ void nhLogin(void Function() onFinished) async {
     timer?.cancel();
   }
 
-  /// 尝试完成登录:读取 cookie,若存在 sessionid 则保存并收尾。
+  bool isCredential(String key, String value) =>
+      value.isNotEmpty && (key.toLowerCase() == 'sessionid' ||
+          key.toLowerCase().contains('session') || key.toLowerCase().contains('token'));
+
+  Future<Map<String, String>> storageCredentials(
+      Future<dynamic> Function() evaluateJavascript) async {
+    try {
+      final result = await evaluateJavascript();
+      if (result is! String || result.isEmpty) return {};
+      dynamic decoded = jsonDecode(result);
+      // flutter_inappwebview returns a JSON-encoded JS string on some platforms.
+      if (decoded is String) decoded = jsonDecode(decoded);
+      if (decoded is! Map) return {};
+      return decoded.map((key, value) => MapEntry('$key', '$value'));
+    } catch (_) {
+      return {};
+    }
+  }
+
   Future<void> tryComplete({
     required Future<Map<String, String>?> Function() getCookies,
+    required Future<dynamic> Function() evaluateJavascript,
     required Future<String?> Function() getUA,
     required void Function() close,
+    required String reason,
   }) async {
-    if (!active || completed) {
-      return;
-    }
-    Map<String, String>? cookies;
+    if (!active || completed) return;
     try {
-      cookies = await getCookies();
-    } catch (_) {
-      // webview 已销毁等情况,忽略
-      return;
-    }
-    if (cookies == null || !cookies.containsKey("sessionid")) {
-      return;
-    }
-    completed = true;
-    final ua = await getUA();
-    if (ua != null && ua.isNotEmpty) {
-      appdata.implicitData[3] = ua;
-      appdata.writeImplicitData();
-    }
-    final cookiesList = <io.Cookie>[];
-    cookies.forEach((key, value) {
-      final cookie = io.Cookie(key, value)..domain = ".nhentai.net";
-      if (key != "cf_clearance") {
-        // cf_clearance 与 User-Agent 绑定,保存后会导致其他请求被 CF 拒绝
-        cookiesList.add(cookie);
+      final cookies = await getCookies() ?? {};
+      final storage = await storageCredentials(evaluateJavascript);
+      final cookieKeys = cookies.keys.join(',');
+      final storageKeys = storage.keys.join(',');
+      final hasCookieCredential = cookies.entries.any((entry) => isCredential(entry.key, entry.value));
+      MapEntry<String, String>? storageCredential;
+      for (final entry in storage.entries) {
+        if (isCredential(entry.key, entry.value)) {
+          storageCredential = entry;
+          break;
+        }
       }
-    });
-    NhentaiNetwork()
-        .cookieJar!
-        .saveFromResponse(Uri.parse(NhentaiNetwork().baseUrl), cookiesList);
-    NhentaiNetwork().logged = true;
-    stop();
-    onFinished();
-    close();
+      LogManager.addLog(LogLevel.info, 'nhentai login probe',
+          '$reason cookies=[$cookieKeys] storageKeys=[$storageKeys] credential=${hasCookieCredential || storageCredential != null}');
+      if (!hasCookieCredential && storageCredential == null) return;
+
+      if (storageCredential != null && !hasCookieCredential) {
+        LogManager.addLog(LogLevel.warning, 'nhentai login',
+            'Credential found only in browser storage: ${storageCredential.key}');
+      }
+      completed = true;
+      final ua = await getUA();
+      if (ua != null && ua.isNotEmpty) {
+        appdata.implicitData[3] = ua;
+        appdata.writeImplicitData();
+      }
+      final persistable = <io.Cookie>[];
+      cookies.forEach((key, value) {
+        if (key != 'cf_clearance') persistable.add(io.Cookie(key, value)..domain = '.nhentai.net');
+      });
+      NhentaiNetwork().cookieJar!.saveFromResponse(
+          Uri.parse(NhentaiNetwork().baseUrl), persistable);
+      NhentaiNetwork().logged = true;
+      stop();
+      onFinished();
+      close();
+    } catch (e) {
+      LogManager.addLog(LogLevel.warning, 'nhentai login probe', '$reason failed: $e');
+    }
   }
 
-  void startPolling(Future<void> Function() check) {
-    timer = Timer.periodic(const Duration(milliseconds: 800), (t) {
+  void poll(Future<void> Function(String reason) check) {
+    timer = Timer.periodic(const Duration(milliseconds: 800), (current) {
       if (!active || completed) {
-        t.cancel();
-        return;
+        current.cancel();
+      } else {
+        check('timer');
       }
-      check();
     });
   }
 
-  if (App.isDesktop && (await DesktopWebview.isAvailable())) {
-    var webview = DesktopWebview(
-      initialUrl: "${NhentaiNetwork().baseUrl}/login/?next=/",
-      onTitleChange: (title, controller) async {
-        // 桌面端标题每 2 秒轮询一次,这里只作为触发点,真正判据是 cookie
-        await tryComplete(
-          getCookies: () =>
-              controller.getCookies("${NhentaiNetwork().baseUrl}/"),
-          getUA: () async => controller.userAgent,
-          close: controller.close,
-        );
-      },
+  if (App.isDesktop && await DesktopWebview.isAvailable()) {
+    late DesktopWebview webview;
+    Future<void> check(String reason) => tryComplete(
+      getCookies: () => webview.getCookies('${NhentaiNetwork().baseUrl}/'),
+      evaluateJavascript: () => webview.evaluateJavascript('''(() => { try { const entries = {}; for (const cookie of document.cookie.split(';')) { const i = cookie.indexOf('='); if (i > 0) entries[cookie.substring(0,i).trim()] = cookie.substring(i+1).trim(); } for (const storage of [localStorage, sessionStorage]) for (let i=0;i<storage.length;i++) { const key=storage.key(i); if(key) entries[key]=storage.getItem(key)||''; } return JSON.stringify(entries); } catch (_) { return '{}'; } })();'''),
+      getUA: () async => webview.userAgent,
+      close: webview.close,
+      reason: reason,
+    );
+    webview = DesktopWebview(
+      initialUrl: '${NhentaiNetwork().baseUrl}/login/?next=/',
+      onNavigation: (url, _) { if (!url.contains('/login')) check('navigation'); },
+      onTitleChange: (_, __) => check('title'),
       onClose: stop,
     );
-    startPolling(() async {
-      await tryComplete(
-        getCookies: () => webview.getCookies("${NhentaiNetwork().baseUrl}/"),
-        getUA: () async => webview.userAgent,
-        close: webview.close,
-      );
-    });
+    poll(check);
     webview.open();
   } else if (App.isMobile) {
-    Future<void> Function()? mobileCheck;
+    Future<void> Function(String reason)? check;
     App.globalTo(() => AppWebview(
-          initialUrl: "${NhentaiNetwork().baseUrl}/login/?next=/",
-          singlePage: true,
-          onStarted: (c) {
-            mobileCheck = () => tryComplete(
-                  getCookies: () =>
-                      c.getCookies("${NhentaiNetwork().baseUrl}/"),
-                  getUA: () => c.getUA(),
-                  close: () => App.globalBack(),
-                );
-          },
-          onTitleChange: (title, c) async {
-            await tryComplete(
-              getCookies: () => c.getCookies("${NhentaiNetwork().baseUrl}/"),
-              getUA: () => c.getUA(),
-              close: () => App.globalBack(),
-            );
-          },
-        ));
-    startPolling(() async => mobileCheck?.call());
+      initialUrl: '${NhentaiNetwork().baseUrl}/login/?next=/',
+      singlePage: true,
+      onStarted: (controller) {
+        check = (reason) => tryComplete(
+          getCookies: () => controller.getCookies('${NhentaiNetwork().baseUrl}/'),
+          evaluateJavascript: () => controller.evaluateJavascript(source: '''(() => { try { const entries = {}; for (const cookie of document.cookie.split(';')) { const i = cookie.indexOf('='); if (i > 0) entries[cookie.substring(0,i).trim()] = cookie.substring(i+1).trim(); } for (const storage of [localStorage, sessionStorage]) for (let i=0;i<storage.length;i++) { const key=storage.key(i); if(key) entries[key]=storage.getItem(key)||''; } return JSON.stringify(entries); } catch (_) { return '{}'; } })();'''),
+          getUA: controller.getUA,
+          close: () => App.globalBack(),
+          reason: reason,
+        );
+      },
+      onNavigation: (url) { if (!url.contains('/login')) check?.call('navigation'); return false; },
+      onClose: stop,
+    ));
+    poll((reason) async => check?.call(reason));
   } else {
-    showToast(message: "当前设备不支持".tl);
+    stop();
+    showToast(message: '\u5f53\u524d\u8bbe\u5907\u4e0d\u652f\u6301'.tl);
   }
 }

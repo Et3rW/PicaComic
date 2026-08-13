@@ -89,11 +89,41 @@ class NhentaiNetwork {
     }
   }
 
-  NhentaiComicBrief parseComic(Element comicDom) {
+  Map<String, String> languagesFromFetchedData(Document document) {
+    final languages = <String, String>{};
+    for (final script in document.querySelectorAll('script[data-sveltekit-fetched]')) {
+      try {
+        // Server-rendered script text may encode quotes as HTML entities.
+        final wrapper = jsonDecode(parseFragment(script.text).text);
+        if (wrapper is! Map || wrapper['body'] is! String) continue;
+        final payload = jsonDecode(wrapper['body'] as String);
+        final galleries = payload is Map ? payload['result'] : null;
+        if (galleries is! List) continue;
+        for (final gallery in galleries) {
+          if (gallery is! Map || gallery['id'] == null || gallery['tag_ids'] is! List) continue;
+          final tags = (gallery['tag_ids'] as List).map((tag) => tag.toString()).toSet();
+          final id = gallery['id'].toString();
+          if (tags.contains('12227')) {
+            languages[id] = 'English';
+          } else if (tags.contains('6346')) {
+            languages[id] = '\u65e5\u672c\u8a9e';
+          } else if (tags.contains('29963')) {
+            languages[id] = '\u4e2d\u6587';
+          }
+        }
+      } catch (_) {
+        // Other SvelteKit blocks may have a different shape; use card tags.
+      }
+    }
+    return languages;
+  }
+
+  NhentaiComicBrief parseComic(Element comicDom,
+      [Map<String, String>? languagesById]) {
     var img = comicDom.querySelector("a > img")!.attributes["src"]!;
     var name = comicDom.querySelector("div.caption")!.text;
     var id = comicDom.querySelector("a")!.attributes["href"]!.nums;
-    var lang = "Unknown";
+    var lang = languagesById?[id] ?? "Unknown";
     var tags = comicDom.attributes["data-tags"] ?? "";
     if (tags.contains("12227")) {
       lang = "English";
@@ -127,6 +157,7 @@ class NhentaiNetwork {
     }
     try {
       var document = parse(res.data);
+      final languagesById = languagesFromFetchedData(document);
       List<Element> popularDoms;
       if (url == baseUrl) {
         popularDoms = document.querySelectorAll(
@@ -139,9 +170,9 @@ class NhentaiNetwork {
 
       return Res(NhentaiHomePageData(
         removeNullValue(List.generate(
-            popularDoms.length, (index) => parseComic(popularDoms[index]))),
+            popularDoms.length, (index) => parseComic(popularDoms[index], languagesById))),
         removeNullValue(List.generate(latest.length - popularDoms.length,
-            (index) => parseComic(latest[index + popularDoms.length]))),
+            (index) => parseComic(latest[index + popularDoms.length], languagesById))),
       ));
     } catch (e, s) {
       LogManager.addLog(LogLevel.error, "Data Analyse", "$e\n$s");
@@ -156,11 +187,12 @@ class NhentaiNetwork {
     }
     try {
       var document = parse(res.data);
+      final languagesById = languagesFromFetchedData(document);
 
       var latest = document.querySelectorAll("div.gallery");
 
       data.latest.addAll(removeNullValue(
-          List.generate(latest.length, (index) => parseComic(latest[index]))));
+          List.generate(latest.length, (index) => parseComic(latest[index], languagesById))));
 
       data.page++;
 
@@ -185,6 +217,7 @@ class NhentaiNetwork {
     }
     try {
       var document = parse(res.data);
+      final languagesById = languagesFromFetchedData(document);
 
       var comicDoms = document.querySelectorAll("div.gallery");
 
@@ -207,7 +240,7 @@ class NhentaiNetwork {
 
       return Res(
           removeNullValue(List.generate(
-              comicDoms.length, (index) => parseComic(comicDoms[index]))),
+              comicDoms.length, (index) => parseComic(comicDoms[index], languagesById))),
           subData: lastPagination == null ? 1 : int.parse(lastPagination));
     } catch (e, s) {
       LogManager.addLog(LogLevel.error, "Data Analyse", "$e\n$s");
@@ -238,6 +271,7 @@ class NhentaiNetwork {
       }
 
       var document = parse(res.data);
+      final languagesById = languagesFromFetchedData(document);
       
       id = id == "" ? document.querySelector("h3#gallery_id")!.text.nums : id;
 
@@ -278,7 +312,7 @@ class NhentaiNetwork {
 
       var recommendations = <NhentaiComicBrief>[];
       for (var comic in document.querySelectorAll("div.gallery")) {
-        var c = parseComic(comic);
+        var c = parseComic(comic, languagesById);
         recommendations.add(c);
       }
       String token = "";
@@ -366,6 +400,7 @@ class NhentaiNetwork {
     }
     try {
       var document = parse(res.data);
+      final languagesById = languagesFromFetchedData(document);
       var comics = document.querySelectorAll("div.gallery");
       var lastPagination = document
           .querySelector("section.pagination > a.last")
@@ -373,7 +408,7 @@ class NhentaiNetwork {
           ?.nums;
       return Res(
           removeNullValue(List.generate(
-              comics.length, (index) => parseComic(comics[index]))),
+              comics.length, (index) => parseComic(comics[index], languagesById))),
           subData: lastPagination == null ? 1 : int.parse(lastPagination));
     } catch (e, s) {
       LogManager.addLog(LogLevel.error, "Data Analyse", "$e\n$s");
@@ -422,6 +457,7 @@ class NhentaiNetwork {
     }
     try {
       var document = parse(res.data);
+      final languagesById = languagesFromFetchedData(document);
 
       var comicDoms = document.querySelectorAll("div.gallery");
 
@@ -444,7 +480,7 @@ class NhentaiNetwork {
 
       return Res(
           removeNullValue(List.generate(
-              comicDoms.length, (index) => parseComic(comicDoms[index]))),
+              comicDoms.length, (index) => parseComic(comicDoms[index], languagesById))),
           subData: lastPagination == null ? 1 : int.parse(lastPagination));
     } catch (e, s) {
       LogManager.addLog(LogLevel.error, "Data Analyse", "$e\n$s");

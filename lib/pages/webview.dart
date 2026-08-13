@@ -45,7 +45,8 @@ extension WebviewExtension on InAppWebViewController{
 
 class AppWebview extends StatefulWidget {
   const AppWebview({required this.initialUrl, this.onTitleChange,
-    this.onNavigation, this.singlePage = false, this.onStarted, super.key});
+    this.onNavigation, this.singlePage = false, this.onStarted, this.onClose,
+    super.key});
 
   final String initialUrl;
 
@@ -54,6 +55,9 @@ class AppWebview extends StatefulWidget {
   final bool Function(String url)? onNavigation;
 
   final void Function(InAppWebViewController controller)? onStarted;
+
+  /// Invoked when this webview route is disposed, including a back gesture.
+  final void Function()? onClose;
 
   final bool singlePage;
 
@@ -67,6 +71,12 @@ class _AppWebviewState extends State<AppWebview> {
   String title = "Webview";
 
   double _progress = 0;
+
+  @override
+  void dispose() {
+    widget.onClose?.call();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
