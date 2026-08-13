@@ -85,11 +85,7 @@ dependencies:
       url: https://github.com/wgh136/flutter_desktop_webview
       path: packages/desktop_webview_window
       ref: 7801fc5
-  flutter_inappwebview:
-    git:
-      url: https://github.com/venera-app/flutter_inappwebview
-      path: flutter_inappwebview
-      ref: 3ef899b
+  flutter_inappwebview: ^6.0.0
 
 dev_dependencies:
   flutter_test:
