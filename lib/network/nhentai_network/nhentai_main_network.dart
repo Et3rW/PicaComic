@@ -94,7 +94,7 @@ class NhentaiNetwork {
     for (final script in document.querySelectorAll('script[data-sveltekit-fetched]')) {
       try {
         // Server-rendered script text may encode quotes as HTML entities.
-        final wrapper = jsonDecode(parseFragment(script.text).text);
+        final wrapper = jsonDecode(parseFragment(script.text).text ?? '');
         if (wrapper is! Map || wrapper['body'] is! String) continue;
         final payload = jsonDecode(wrapper['body'] as String);
         final galleries = payload is Map ? payload['result'] : null;
