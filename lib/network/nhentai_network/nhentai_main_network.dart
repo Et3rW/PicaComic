@@ -47,7 +47,7 @@ class NhentaiNetwork {
         "Accept-Language": "zh-CN,zh-TW;q=0.9,zh;q=0.8,en-US;q=0.7,en;q=0.6",
         "Referer": "$baseUrl/",
       },
-      validateStatus: (i) => i == 200 || i == 302,
+      validateStatus: (i) => i >= 200 && i < 400,
     ));
     dio.interceptors.add(CookieManagerSql(cookieJar!));
     dio.interceptors.add(CloudflareInterceptor());
@@ -58,17 +58,26 @@ class NhentaiNetwork {
     cookieJar!.delete(Uri.parse(baseUrl), "sessionid");
   }
 
-  Future<Res<String>> get(String url) async {
+  Future<Res<String>> get(String url, [int redirects = 0]) async {
     if (cookieJar == null) {
       await init();
     }
     try {
       var res = await dio.get<String>(url, options: Options(followRedirects: false));
-      if (res.statusCode == 302) {
-        var path = res.headers["Location"]?.first ??
+      // nhentai 用 301/302/307/308 迁移路径(如 /favorites -> /user/favorites),
+      // 手动跟随并保留 cookie,最多 5 跳防死循环
+      if ((res.statusCode == 301 || res.statusCode == 302 ||
+              res.statusCode == 307 || res.statusCode == 308) &&
+          redirects < 5) {
+        var location = res.headers["Location"]?.first ??
             res.headers["location"]?.first ??
             "";
-        return get(Uri.parse(url).replace(path: path).toString());
+        if (location.isNotEmpty) {
+          var next = Uri.parse(location).hasScheme
+              ? Uri.parse(location)
+              : Uri.parse(url).resolve(location);
+          return get(next.toString(), redirects + 1);
+        }
       }
       return Res(res.data);
     } catch (e) {
@@ -397,7 +406,8 @@ class NhentaiNetwork {
     if (!logged) {
       return const Res(null, errorMessage: "login required");
     }
-    var res = await get("$baseUrl/favorites?page=$page");
+    // nhentai 收藏页已迁移到 /user/favorites(旧 /favorites 会 301/308 链式重定向,Dio 不跟随)
+    var res = await get("$baseUrl/user/favorites?page=$page");
     if (res.error) {
       return Res.fromErrorRes(res);
     }
