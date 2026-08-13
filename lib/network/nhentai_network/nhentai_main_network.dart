@@ -47,7 +47,7 @@ class NhentaiNetwork {
         "Accept-Language": "zh-CN,zh-TW;q=0.9,zh;q=0.8,en-US;q=0.7,en;q=0.6",
         "Referer": "$baseUrl/",
       },
-      validateStatus: (i) => i >= 200 && i < 400,
+      validateStatus: (i) => i != null && i >= 200 && i < 400,
     ));
     dio.interceptors.add(CookieManagerSql(cookieJar!));
     dio.interceptors.add(CloudflareInterceptor());
