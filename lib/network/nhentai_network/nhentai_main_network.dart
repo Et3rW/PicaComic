@@ -97,7 +97,10 @@ class NhentaiNetwork {
         final wrapper = jsonDecode(parseFragment(script.text).text ?? '');
         if (wrapper is! Map || wrapper['body'] is! String) continue;
         final payload = jsonDecode(wrapper['body'] as String);
-        final galleries = payload is Map ? payload['result'] : null;
+        // /api/v2/galleries/popular 的 payload 直接是 List;其余是 {result: [...]}
+        final galleries = payload is List
+            ? payload
+            : (payload is Map ? payload['result'] : null);
         if (galleries is! List) continue;
         for (final gallery in galleries) {
           if (gallery is! Map || gallery['id'] == null || gallery['tag_ids'] is! List) continue;
@@ -394,7 +397,7 @@ class NhentaiNetwork {
     if (!logged) {
       return const Res(null, errorMessage: "login required");
     }
-    var res = await get("$baseUrl/favorites/?page=$page");
+    var res = await get("$baseUrl/favorites?page=$page");
     if (res.error) {
       return Res.fromErrorRes(res);
     }
