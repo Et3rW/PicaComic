@@ -85,6 +85,28 @@ Future<void> init() async {
       HistoryManager().init(),
       AppTranslation.init(),
     ]);
+    // nhentai 登录态同步:账号标记与实际会话保持一致(修复"显示已登录却 login required")
+    if (NhentaiNetwork().logged) {
+      if (nhentai.data['account'] == null) {
+        nhentai.data['account'] = 'ok';
+        await nhentai.saveData();
+      }
+    } else {
+      final backup = nhentai.data['sessionid'];
+      if (backup != null && backup.toString().isNotEmpty) {
+        // cookies.db 丢失/未持久化时,从源数据备份恢复会话
+        NhentaiNetwork().cookieJar!.saveFromResponse(
+            Uri.parse(NhentaiNetwork().baseUrl),
+            [io.Cookie('sessionid', backup.toString())..domain = '.nhentai.net']);
+        NhentaiNetwork().logged = true;
+        nhentai.data['account'] = 'ok';
+        await nhentai.saveData();
+      } else if (nhentai.data['account'] != null) {
+        // 确实无有效会话 → 清除账号标记,避免状态矛盾
+        nhentai.data['account'] = null;
+        await nhentai.saveData();
+      }
+    }
     CacheManager().setLimitSize(appdata.appSettings.cacheLimit);
   } catch (e, s) {
     LogManager.addLog(
