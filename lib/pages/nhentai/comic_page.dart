@@ -64,7 +64,7 @@ class NhentaiComicPage extends BaseComicPage<NhentaiComic> {
       folders: const {"0": "Nhentai"},
       selectFolderCallback: (folder, page) async {
         if (page == 0) {
-          var res = await NhentaiNetwork().favoriteComic(id, data!.token);
+          var res = await NhentaiNetwork().favoriteComic(id);
           if (res.success) {
             data!.favorite = true;
           }
@@ -86,7 +86,7 @@ class NhentaiComicPage extends BaseComicPage<NhentaiComic> {
         }
       },
       cancelPlatformFavorite: () async {
-        var res = await NhentaiNetwork().unfavoriteComic(id, data!.token);
+        var res = await NhentaiNetwork().unfavoriteComic(id);
         if(res.success) {
           data!.favorite = false;
         }

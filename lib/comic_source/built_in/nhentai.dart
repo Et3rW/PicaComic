@@ -85,14 +85,15 @@ final nhentai = ComicSource.named(
       if (NhentaiNetwork().logged) {
         var source = ComicSource.find('nhentai')!;
         source.data["account"] = 'ok';
-        // 备份 sessionid 到源数据(防 cookies.db 丢失/未持久化导致每次启动掉登录)
-        final session = NhentaiNetwork()
+        // 备份登录 cookies 到源数据(防 cookies.db 丢失/未持久化导致每次启动掉登录)
+        // 新版 nhentai 登录态靠 access_token(旧版为 sessionid),两个都备份
+        final authCookies = NhentaiNetwork()
             .cookieJar!
             .loadForRequest(Uri.parse(NhentaiNetwork().baseUrl))
-            .where((c) => c.name == 'sessionid')
+            .where((c) => c.name == 'sessionid' || c.name == 'access_token')
             .toList();
-        if (session.isNotEmpty) {
-          source.data['sessionid'] = session.first.value;
+        for (final cookie in authCookies) {
+          source.data[cookie.name] = cookie.value;
         }
         source.saveData();
       }
@@ -103,6 +104,7 @@ final nhentai = ComicSource.named(
       var source = ComicSource.find('nhentai')!;
       source.data["account"] = null;
       source.data["sessionid"] = null;
+      source.data["access_token"] = null;
       source.saveData();
     },
     allowReLogin: false,

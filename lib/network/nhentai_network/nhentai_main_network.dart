@@ -36,7 +36,8 @@ class NhentaiNetwork {
   Future<void> init() async {
     cookieJar = SingleInstanceCookieJar.instance;
     for (var cookie in cookieJar!.loadForRequest(Uri.parse(baseUrl))) {
-      if (cookie.name == "sessionid") {
+      // 新版 nhentai 以 access_token 标识登录态(旧版为 sessionid),两者都算已登录
+      if (cookie.name == "sessionid" || cookie.name == "access_token") {
         logged = true;
       }
     }
@@ -56,6 +57,7 @@ class NhentaiNetwork {
   void logout() async {
     logged = false;
     cookieJar!.delete(Uri.parse(baseUrl), "sessionid");
+    cookieJar!.delete(Uri.parse(baseUrl), "access_token");
   }
 
   Future<Res<String>> get(String url, [int redirects = 0]) async {
@@ -96,6 +98,39 @@ class NhentaiNetwork {
     } catch (e) {
       return Res(null, errorMessage: e.toString());
     }
+  }
+
+  Future<Res<String>> delete(String url,
+      [Map<String, String>? headers]) async {
+    if (cookieJar == null) {
+      await init();
+    }
+    try {
+      var res = await dio.delete<String>(url, options: Options(headers: headers));
+      return Res(res.data);
+    } catch (e) {
+      return Res(null, errorMessage: e.toString());
+    }
+  }
+
+  /// 从 data-sveltekit-fetched 内嵌 API 数据中读 is_favorited(登录后请求才会带 favorite 字段)
+  bool? _isFavoritedFromFetchedData(Document document) {
+    for (final script
+        in document.querySelectorAll('script[data-sveltekit-fetched]')) {
+      try {
+        final dataUrl = script.attributes['data-url'] ?? '';
+        if (!dataUrl.contains('/api/v2/galleries/')) continue;
+        final wrapper = jsonDecode(parseFragment(script.text).text ?? '');
+        if (wrapper is! Map || wrapper['body'] is! String) continue;
+        final payload = jsonDecode(wrapper['body'] as String);
+        if (payload is Map && payload['is_favorited'] is bool) {
+          return payload['is_favorited'] as bool;
+        }
+      } catch (_) {
+        // 解析失败则跳过
+      }
+    }
+    return null;
   }
 
   Map<String, String> languagesFromFetchedData(Document document) {
@@ -312,10 +347,13 @@ class NhentaiNetwork {
         }
       }
 
-      bool favorite =
-          document.querySelector("button#favorite > span.text")?.text !=
-                  "Favorite" &&
-              logged;
+      // 新版页面:优先从内嵌 API 数据读 is_favorited(登录后才有),否则回退按钮文案
+      bool favorite = false;
+      if (logged) {
+        favorite = _isFavoritedFromFetchedData(document) ??
+            document.querySelector("button#favorite > span.text")?.text !=
+                "Favorite";
+      }
 
       var thumbnails = <String>[];
       for (var t in document.querySelectorAll("a.gallerythumb > img")) {
@@ -327,19 +365,8 @@ class NhentaiNetwork {
         var c = parseComic(comic, languagesById);
         recommendations.add(c);
       }
-      String token = "";
-      try {
-        var script = document
-            .querySelectorAll("script")
-            .firstWhere((element) => element.text.contains("csrf_token"))
-            .text;
-        token = script.split("csrf_token: \"")[1].split("\",")[0];
-      } catch (e) {
-        // ignore
-      }
-
       return Res(NhentaiComic(id, title, subTitle, cover, tags, favorite,
-          thumbnails, recommendations, token));
+          thumbnails, recommendations, ""));
     } catch (e, s) {
       LogManager.addLog(LogLevel.error, "Data Analyse", "$e\n$s");
       return Res(null, errorMessage: "Failed to Parse Data: $e");
@@ -384,8 +411,11 @@ class NhentaiNetwork {
 
       var galleryData = json.decode(json.decode(script)["body"]);
 
-      var url = document
-          .querySelector("#image-container > a > img")!.attributes["src"]!;
+      // 新版页面已移除 #image-container,取当前页图片地址推导图片服务器
+      var url = (document.querySelector("#image-container > a > img") ??
+              document.querySelector("img[loading='eager']"))
+          ?.attributes["src"] ??
+          "";
 
       String baseUrl = url.split('/galleries')[0];
 
@@ -429,30 +459,64 @@ class NhentaiNetwork {
     }
   }
 
-  Future<Res<bool>> favoriteComic(String id, String token) async {
-    var res = await post("$baseUrl/api/gallery/$id/favorite", null, {
-      "Referer": "$baseUrl/g/$id",
-      "X-Csrftoken": token,
-      "X-Requested-With": "XMLHttpRequest"
-    });
-    if (res.error) {
-      return Res.fromErrorRes(res);
-    } else {
-      return const Res(true);
+  /// 从 cookieJar 读取新版 API 的 access_token(webview 登录时已保存)
+  Future<String?> _getAccessToken() async {
+    for (var cookie in cookieJar!.loadForRequest(Uri.parse(baseUrl))) {
+      if (cookie.name == "access_token" && cookie.value.isNotEmpty) {
+        return cookie.value;
+      }
+    }
+    return null;
+  }
+
+  /// 通过 /auth/refresh 刷新 access_token(响应 set-cookie 由 CookieManagerSql 自动入库)
+  Future<void> _refreshAccessToken() async {
+    try {
+      await dio.post<String>("$baseUrl/auth/refresh");
+    } catch (_) {
+      // 会话失效/网络错误时忽略,由调用方处理
     }
   }
 
-  Future<Res<bool>> unfavoriteComic(String id, String token) async {
-    var res = await post("$baseUrl/api/gallery/$id/unfavorite", null, {
+  /// 新版收藏 API:/api/v2/galleries/{id}/favorite,鉴权走 Authorization: User <token>
+  Future<Res<bool>> _favoriteRequest(
+      String method, String id, String? token) async {
+    if (token == null || token.isEmpty) {
+      return const Res(null, errorMessage: "login required");
+    }
+    final headers = <String, String>{
       "Referer": "$baseUrl/g/$id",
-      "X-Csrftoken": token,
-      "X-Requested-With": "XMLHttpRequest"
-    });
+      "X-Requested-With": "XMLHttpRequest",
+      "Authorization": "User $token",
+    };
+    final res = method == "DELETE"
+        ? await delete("$baseUrl/api/v2/galleries/$id/favorite", headers)
+        : await post("$baseUrl/api/v2/galleries/$id/favorite", null, headers);
     if (res.error) {
       return Res.fromErrorRes(res);
-    } else {
-      return const Res(true);
     }
+    return const Res(true);
+  }
+
+  Future<Res<bool>> favoriteComic(String id) async {
+    var token = await _getAccessToken();
+    var res = await _favoriteRequest("POST", id, token);
+    if (res.error) {
+      // 无 token 或 token 失效:先刷新再重试一次
+      await _refreshAccessToken();
+      res = await _favoriteRequest("POST", id, await _getAccessToken());
+    }
+    return res;
+  }
+
+  Future<Res<bool>> unfavoriteComic(String id) async {
+    var token = await _getAccessToken();
+    var res = await _favoriteRequest("DELETE", id, token);
+    if (res.error) {
+      await _refreshAccessToken();
+      res = await _favoriteRequest("DELETE", id, await _getAccessToken());
+    }
+    return res;
   }
 
   Future<Res<List<NhentaiComicBrief>>> getCategoryComics(

@@ -92,12 +92,22 @@ Future<void> init() async {
         await nhentai.saveData();
       }
     } else {
-      final backup = nhentai.data['sessionid'];
-      if (backup != null && backup.toString().isNotEmpty) {
+      // 新版 nhentai 登录态靠 access_token(旧版为 sessionid),恢复时两者都处理
+      final backupSession = nhentai.data['sessionid'];
+      final backupToken = nhentai.data['access_token'];
+      if ((backupSession != null && backupSession.toString().isNotEmpty) ||
+          (backupToken != null && backupToken.toString().isNotEmpty)) {
         // cookies.db 丢失/未持久化时,从源数据备份恢复会话
+        final restored = <io.Cookie>[
+          if (backupSession != null && backupSession.toString().isNotEmpty)
+            io.Cookie('sessionid', backupSession.toString())
+              ..domain = '.nhentai.net',
+          if (backupToken != null && backupToken.toString().isNotEmpty)
+            io.Cookie('access_token', backupToken.toString())
+              ..domain = '.nhentai.net',
+        ];
         NhentaiNetwork().cookieJar!.saveFromResponse(
-            Uri.parse(NhentaiNetwork().baseUrl),
-            [io.Cookie('sessionid', backup.toString())..domain = '.nhentai.net']);
+            Uri.parse(NhentaiNetwork().baseUrl), restored);
         NhentaiNetwork().logged = true;
         nhentai.data['account'] = 'ok';
         await nhentai.saveData();
