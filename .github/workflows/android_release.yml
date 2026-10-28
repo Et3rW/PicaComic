@@ -71,7 +71,7 @@ jobs:
           signature = subprocess.check_output([str(sdk/'apksigner'), 'verify', '--verbose', '--print-certs', apk], text=True)
           print(signature, flush=True)
           expected = 'd7d2aa05487ac22f2b9ec2147d5629535ed76b50938a412707ab901161b8903b'
-          digests = re.findall(r'^Signer #\d+ certificate SHA-256 digest: ([0-9a-fA-F:]+)\s*$', signature, re.MULTILINE)
+          digests = re.findall(r'^(?:Signer #\d+|V\d+(?:\.\d+)? Signer:) certificate SHA-256 digest: ([0-9a-fA-F:]+)\s*$', signature, re.MULTILINE)
           assert {digest.replace(':', '').lower() for digest in digests} == {expected}, 'Unexpected signing certificate'
           info = subprocess.check_output([str(sdk/'aapt'), 'dump', 'badging', apk], text=True)
           assert "package: name='com.github.et3rw.pica_comic' versionCode='5015' versionName='5.1.5'" in info, 'Unexpected package/version'
