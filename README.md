@@ -1,6 +1,6 @@
 # Pica Comic
 
-[![flutter](https://img.shields.io/badge/flutter-3.41.6-blue)](https://flutter.dev/)
+[![flutter](https://img.shields.io/badge/flutter-3.47.0-blue)](https://flutter.dev/)
 [![License](https://img.shields.io/github/license/Pacalini/PicaComic)](https://github.com/Pacalini/PicaComic/blob/master/LICENSE)
 [![Download](https://img.shields.io/github/v/release/Pacalini/PicaComic)](https://github.com/Pacalini/PicaComic/releases)
 [![stars](https://img.shields.io/github/stars/Pacalini/PicaComic)](https://github.com/Pacalini/PicaComic/stargazers)
@@ -31,7 +31,7 @@ paru -S pica-comic-bin
 ```shell
 git clone https://github.com/Pacalini/PicaComic
 ```
-2. Install flutter: https://docs.flutter.dev/get-started/install
+2. Install Flutter 3.47.0 (matches the checked-in dependency lockfile): https://docs.flutter.dev/get-started/install
 3. Build Application: https://docs.flutter.dev/deployment
 
 ## Introduction

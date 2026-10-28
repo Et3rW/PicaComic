@@ -14,6 +14,8 @@ import 'package:pica_comic/tools/translations.dart';
 import 'package:pica_comic/pages/pre_search_page.dart';
 import '../app_dio.dart';
 import 'models.dart';
+import 'login_flow.dart';
+import 'page_parser.dart';
 import 'package:html/parser.dart';
 
 export 'models.dart';
@@ -35,12 +37,10 @@ class NhentaiNetwork {
 
   Future<void> init() async {
     cookieJar = SingleInstanceCookieJar.instance;
-    for (var cookie in cookieJar!.loadForRequest(Uri.parse(baseUrl))) {
-      // 新版 nhentai 以 access_token 标识登录态(旧版为 sessionid),两者都算已登录
-      if (cookie.name == "sessionid" || cookie.name == "access_token") {
-        logged = true;
-      }
-    }
+    logged = hasNhentaiSession({
+      for (final cookie in cookieJar!.loadForRequest(Uri.parse(baseUrl)))
+        cookie.name: cookie.value,
+    });
     dio = logDio(BaseOptions(
       headers: {
         "Accept":
@@ -54,10 +54,11 @@ class NhentaiNetwork {
     dio.interceptors.add(CloudflareInterceptor());
   }
 
-  void logout() async {
+  void logout() {
     logged = false;
-    cookieJar!.delete(Uri.parse(baseUrl), "sessionid");
-    cookieJar!.delete(Uri.parse(baseUrl), "access_token");
+    for (final name in nhentaiAuthCookieNames) {
+      cookieJar?.deleteNamed(Uri.parse(baseUrl), name);
+    }
   }
 
   Future<Res<String>> get(String url, [int redirects = 0]) async {
@@ -113,34 +114,12 @@ class NhentaiNetwork {
     }
   }
 
-  /// 从 data-sveltekit-fetched 内嵌 API 数据中读 is_favorited(登录后请求才会带 favorite 字段)
-  bool? _isFavoritedFromFetchedData(Document document) {
-    for (final script
-        in document.querySelectorAll('script[data-sveltekit-fetched]')) {
-      try {
-        final dataUrl = script.attributes['data-url'] ?? '';
-        if (!dataUrl.contains('/api/v2/galleries/')) continue;
-        final wrapper = jsonDecode(parseFragment(script.text).text ?? '');
-        if (wrapper is! Map || wrapper['body'] is! String) continue;
-        final payload = jsonDecode(wrapper['body'] as String);
-        if (payload is Map && payload['is_favorited'] is bool) {
-          return payload['is_favorited'] as bool;
-        }
-      } catch (_) {
-        // 解析失败则跳过
-      }
-    }
-    return null;
-  }
-
   Map<String, String> languagesFromFetchedData(Document document) {
     final languages = <String, String>{};
     for (final script in document.querySelectorAll('script[data-sveltekit-fetched]')) {
       try {
         // Server-rendered script text may encode quotes as HTML entities.
-        final wrapper = jsonDecode(parseFragment(script.text).text ?? '');
-        if (wrapper is! Map || wrapper['body'] is! String) continue;
-        final payload = jsonDecode(wrapper['body'] as String);
+        final payload = nhentaiFetchedPayload(script);
         // /api/v2/galleries/popular 的 payload 直接是 List;其余是 {result: [...]}
         final galleries = payload is List
             ? payload
@@ -347,13 +326,7 @@ class NhentaiNetwork {
         }
       }
 
-      // 新版页面:优先从内嵌 API 数据读 is_favorited(登录后才有),否则回退按钮文案
-      bool favorite = false;
-      if (logged) {
-        favorite = _isFavoritedFromFetchedData(document) ??
-            document.querySelector("button#favorite > span.text")?.text !=
-                "Favorite";
-      }
+      final favorite = logged && nhentaiFavoriteState(document, id);
 
       var thumbnails = <String>[];
       for (var t in document.querySelectorAll("a.gallerythumb > img")) {

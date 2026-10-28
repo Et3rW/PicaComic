@@ -7,13 +7,15 @@ import 'package:pica_comic/foundation/log.dart';
 import 'package:dio_http2_adapter/dio_http2_adapter.dart';
 import 'package:pica_comic/network/http_client.dart';
 import '../base.dart';
+import 'log_redaction.dart';
 import '../foundation/app.dart';
 
 class MyLogInterceptor implements Interceptor {
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) {
     LogManager.addLog(LogLevel.error, "Network",
-        "${err.requestOptions.method} ${err.requestOptions.path}\n$err\n${err.response?.data.toString()}");
+        "${err.requestOptions.method} ${networkLogUrl(err.requestOptions.uri)}\n"
+        "${err.type.name} status=${err.response?.statusCode}");
     switch(err.type) {
       case DioExceptionType.badResponse:
         var statusCode = err.response?.statusCode;
@@ -60,25 +62,15 @@ class MyLogInterceptor implements Interceptor {
   @override
   void onResponse(
       Response<dynamic> response, ResponseInterceptorHandler handler) {
-    var headers = response.headers.map.map((key, value) => MapEntry(
-        key.toLowerCase(), value.length == 1 ? value.first : value.toString()));
-    headers.remove("cookie");
-    String content;
-    if(response.data is List<int>) {
-      try {
-        content = utf8.decode(response.data, allowMalformed: false);
-      }
-      catch(e) {
-        content = "<Bytes>\nlength:${response.data.length}";
-      }
-    } else {
-      content = response.data.toString();
-    }
+    final headers = networkLogHeaders(response.headers.map);
+    final content = networkLogBody(response.data,
+        authenticated: isAuthenticatedLogRequest(
+            response.requestOptions.uri, response.requestOptions.headers));
     LogManager.addLog(
         (response.statusCode != null && response.statusCode! < 400)
             ? LogLevel.info : LogLevel.error,
         "Network",
-        "Response ${response.realUri.toString()} ${response.statusCode}\n"
+        "Response ${networkLogUrl(response.realUri)} ${response.statusCode}\n"
             "headers:\n$headers\n$content");
     handler.next(response);
   }
@@ -146,7 +138,7 @@ class AppHttpAdapter implements HttpClientAdapter{
           }
         }
         LogManager.addLog(LogLevel.error, "Network",
-            "${o.method} ${o.path}\n$e\nRetrying...");
+            "${o.method} ${networkLogUrl(o.uri)}\n${e.runtimeType}\nRetrying...");
         retry++;
         if(retry == 2){
           rethrow;
@@ -159,7 +151,9 @@ class AppHttpAdapter implements HttpClientAdapter{
   Future<ResponseBody> fetchOnce(RequestOptions o, Stream<Uint8List>? requestStream, Future<void>? cancelFuture) async{
     var options = o.copyWith();
     LogManager.addLog(LogLevel.info, "Network",
-        "${options.method} ${options.path}\nheaders:\n${options.headers.toString()}\ndata:${options.data}");
+        "${options.method} ${networkLogUrl(options.uri)}\n"
+        "headers:\n${networkLogHeaders(options.headers)}\n"
+        "data:${networkLogBody(options.data, authenticated: isAuthenticatedLogRequest(options.uri, options.headers))}");
     if(appdata.settings[58] == "0"){
       return checkCookie(await adapter!.fetch(options, requestStream, cancelFuture));
     }

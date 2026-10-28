@@ -1,8 +1,8 @@
-import 'dart:async';
 import 'dart:collection';
 
 import 'package:pica_comic/comic_source/comic_source.dart';
 import 'package:pica_comic/network/nhentai_network/login.dart';
+import 'package:pica_comic/network/nhentai_network/login_flow.dart';
 import 'package:pica_comic/network/nhentai_network/nhentai_main_network.dart';
 import 'package:pica_comic/network/nhentai_network/tags.dart';
 import 'package:flutter/material.dart';
@@ -77,25 +77,23 @@ final nhentai = ComicSource.named(
   ),
   account: AccountConfig.named(
     onLogin: (context) async {
-      var future = Completer<void>();
-      nhLogin(() {
-        future.complete();
-      });
-      await future.future;
-      if (NhentaiNetwork().logged) {
+      if (await nhLogin()) {
         var source = ComicSource.find('nhentai')!;
         source.data["account"] = 'ok';
         // 备份登录 cookies 到源数据(防 cookies.db 丢失/未持久化导致每次启动掉登录)
-        // 新版 nhentai 登录态靠 access_token(旧版为 sessionid),两个都备份
+        // 同时保留刷新凭据;先清旧备份,避免混入上一账号的数据。
         final authCookies = NhentaiNetwork()
             .cookieJar!
             .loadForRequest(Uri.parse(NhentaiNetwork().baseUrl))
-            .where((c) => c.name == 'sessionid' || c.name == 'access_token')
+            .where((c) => nhentaiAuthCookieNames.contains(c.name))
             .toList();
+        for (final name in nhentaiAuthCookieNames) {
+          source.data[name] = null;
+        }
         for (final cookie in authCookies) {
           source.data[cookie.name] = cookie.value;
         }
-        source.saveData();
+        await source.saveData();
       }
     },
     logout: () {
@@ -105,6 +103,7 @@ final nhentai = ComicSource.named(
       source.data["account"] = null;
       source.data["sessionid"] = null;
       source.data["access_token"] = null;
+      source.data["refresh_token"] = null;
       source.saveData();
     },
     allowReLogin: false,

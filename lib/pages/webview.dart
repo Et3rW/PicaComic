@@ -241,7 +241,7 @@ class DesktopWebview {
     });
   }
 
-  void open() async {
+  Future<void> open() async {
     _webview = await WebviewWindow.create(configuration: CreateConfiguration(
       useWindowPositionAndSize: true,
       userDataFolderWindows: "${App.dataPath}\\webview",

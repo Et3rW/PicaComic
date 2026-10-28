@@ -30,6 +30,7 @@ import 'comic_source/built_in/nhentai.dart';
 import 'comic_source/built_in/picacg.dart';
 import 'foundation/app.dart';
 import 'network/nhentai_network/nhentai_main_network.dart';
+import 'network/nhentai_network/login_flow.dart';
 
 Future<void> init() async {
   try {
@@ -93,18 +94,17 @@ Future<void> init() async {
       }
     } else {
       // 新版 nhentai 登录态靠 access_token(旧版为 sessionid),恢复时两者都处理
-      final backupSession = nhentai.data['sessionid'];
-      final backupToken = nhentai.data['access_token'];
-      if ((backupSession != null && backupSession.toString().isNotEmpty) ||
-          (backupToken != null && backupToken.toString().isNotEmpty)) {
-        // cookies.db 丢失/未持久化时,从源数据备份恢复会话
+      final backup = <String, String>{
+        for (final name in nhentaiAuthCookieNames)
+          if (nhentai.data[name] is String) name: nhentai.data[name] as String,
+      };
+      if (hasNhentaiSession(backup)) {
         final restored = <io.Cookie>[
-          if (backupSession != null && backupSession.toString().isNotEmpty)
-            io.Cookie('sessionid', backupSession.toString())
-              ..domain = '.nhentai.net',
-          if (backupToken != null && backupToken.toString().isNotEmpty)
-            io.Cookie('access_token', backupToken.toString())
-              ..domain = '.nhentai.net',
+          for (final entry in backup.entries)
+            if (entry.value.isNotEmpty)
+              io.Cookie(entry.key, entry.value)
+                ..domain = '.nhentai.net'
+                ..path = '/',
         ];
         NhentaiNetwork().cookieJar!.saveFromResponse(
             Uri.parse(NhentaiNetwork().baseUrl), restored);

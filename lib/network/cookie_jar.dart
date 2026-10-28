@@ -159,7 +159,15 @@ class CookieJarSql {
       _db.execute('''
         DELETE FROM cookies
         WHERE name = ? AND domain = ? AND path = ?;
-      ''', [name, domain, uri.path]);
+      ''', [name, domain, uri.path.isEmpty ? '/' : uri.path]);
+    }
+  }
+
+  /// Remove a named credential at every path, preserving other site cookies.
+  void deleteNamed(Uri uri, String name) {
+    for (final domain in _getAcceptedDomains(uri.host)) {
+      _db.execute('DELETE FROM cookies WHERE name = ? AND domain = ?;',
+          [name, domain]);
     }
   }
 

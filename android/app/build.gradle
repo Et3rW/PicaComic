@@ -25,7 +25,12 @@ if (flutterVersionName == null) {
 
 def keystorePropertiesFile = rootProject.file("key.properties")
 def keystoreProperties = new Properties()
-keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+def isTestBuild = System.getenv("PICA_TEST_BUILD") == "true"
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
+} else if (!isTestBuild) {
+    throw new GradleException("Release signing requires android/key.properties. For a separate test app, set PICA_TEST_BUILD=true.")
+}
 
 android {
     compileSdk flutter.compileSdkVersion
@@ -35,7 +40,7 @@ android {
         abi {
             reset()
             include 'arm64-v8a', 'x86_64'
-            enable true
+            enable !isTestBuild
             universalApk true
         }
     }
@@ -56,6 +61,10 @@ android {
 
     defaultConfig {
         applicationId "com.github.pacalini.pica_comic"
+        if (isTestBuild) {
+            applicationIdSuffix ".repairtest"
+        }
+        manifestPlaceholders["appLabel"] = isTestBuild ? "Pica Comic 测试版" : "Pica Comic"
         // You can update the following values to match your application needs.
         // For more information, see: https://docs.flutter.dev/deployment/android#reviewing-the-gradle-build-configuration.
         minSdkVersion flutter.minSdkVersion
@@ -67,27 +76,33 @@ android {
 
     signingConfigs {
         debug {
-            storeFile file(keystoreProperties['storeFile'])
-            storePassword keystoreProperties['storePassword']
-            keyAlias keystoreProperties['keyAlias']
-            keyPassword keystoreProperties['keyPassword']
+            if (!isTestBuild) {
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
         }
         release {
-            keyAlias keystoreProperties['keyAlias']
-            keyPassword keystoreProperties['keyPassword']
-            storeFile file(keystoreProperties['storeFile'])
-            storePassword keystoreProperties['storePassword']
+            if (!isTestBuild) {
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+            }
         }
     }
 
     buildTypes {
         release {
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig signingConfigs.release
+            // Test packages use a separate app ID and cannot overwrite the user's app.
+            signingConfig isTestBuild ? signingConfigs.debug : signingConfigs.release
             applicationVariants.all { variant ->
                 variant.outputs.all { output ->
                     def abi = output.getFilter(com.android.build.OutputFile.ABI)
-                    if (abi != null) {   // null for the universal-debug, universal-release variants
+                    if (isTestBuild) {
+                        outputFileName = "app-release.apk"
+                    } else if (abi != null) {   // null for the universal-debug, universal-release variants
                         outputFileName = "PicaComic-${variant.versionName}-${abi}.apk"
                     } else {
                         outputFileName = "PicaComic-${variant.versionName}.apk"

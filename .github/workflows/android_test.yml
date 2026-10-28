@@ -1,0 +1,54 @@
+name: Build Android Test APK
+run-name: Android test APK - ${{ github.sha }}
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      PICA_TEST_BUILD: 'true'
+      FLUTTER_SUPPRESS_ANALYTICS: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.0'
+          channel: stable
+          cache: true
+      - name: Install locked dependencies
+        run: flutter pub get --enforce-lockfile
+      - name: Regression tests
+        run: >-
+          flutter test --no-pub
+          test/nhentai_login_flow_test.dart
+          test/nhentai_page_parser_test.dart
+          test/cookie_logout_test.dart
+          test/network_log_redaction_test.dart
+      - name: Build release-mode test APK
+        run: flutter build apk --release --no-pub --target-platform android-arm64,android-x64
+      - name: Verify and package APK
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk dist/PicaComic-5.1.1-test.apk
+          build_tools=$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)
+          "$ANDROID_HOME/build-tools/$build_tools/apksigner" verify --verbose dist/PicaComic-5.1.1-test.apk
+          "$ANDROID_HOME/build-tools/$build_tools/aapt" dump badging dist/PicaComic-5.1.1-test.apk
+          cd dist
+          sha256sum PicaComic-5.1.1-test.apk > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PicaComic-5.1.1-test-apk
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
