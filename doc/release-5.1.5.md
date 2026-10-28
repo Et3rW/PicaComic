@@ -18,6 +18,10 @@ APK 为 release 模式，Android 7.0+，ARM64 和 x86_64。与旧正式版/测�
 
 固定使用 Flutter 3.47.0 和 Xcode 26.3。Flutter 工具链的最低 iOS 部署版本为 15.0，Podfile、Runner 工程及框架配置统一调整为该版本。
 
+## macOS
+
+提供 `PicaComic-5.1.5-macos-universal.zip`，要求 macOS 12.4+，包含 Apple 芯片与 Intel 架构。沿用 macOS 应用标识 `com.github.pacalini.picaComic`，使用 Xcode 本地临时签名；未使用 Apple 开发者证书，也未公证。ZIP 保留应用目录及符号链接，解压后可放入“应用程序”。
+
 ## 发布校验
 
-Android 工作流执行现有 57 项回归测试，检查 APK 包名、版本及发布证书指纹；iOS 工作流检查版本、包名、设备平台和 ARM64 架构。两端分别生成 SHA-256 校验文件。正式 Release 在构建完成、下载后完整性检查通过后创建，不复用临时签名测试 APK。iOS 真机安装和交互仍需用户验证。
+Android 工作流执行现有 57 项回归测试，检查 APK 包名、版本及发布证书指纹；iOS 工作流检查版本、包名、设备平台和 ARM64 架构；macOS 工作流检查版本、最低系统版本、所有原生二进制的双架构及应用签名完整性。各平台分别生成 SHA-256 校验文件。正式 Release 在构建完成、下载后完整性检查通过后创建，不复用临时签名测试 APK。iOS 真机安装及桌面端实际交互仍需用户验证。
