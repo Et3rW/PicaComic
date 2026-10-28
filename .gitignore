@@ -46,3 +46,7 @@ app.*.map.json
 /android/app/release
 .vscode/pica-release.jks
 key.properties
+*.jks
+*.keystore
+*.p12
+*.mobileprovision

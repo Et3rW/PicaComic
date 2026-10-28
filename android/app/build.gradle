@@ -26,6 +26,7 @@ if (flutterVersionName == null) {
 def keystorePropertiesFile = rootProject.file("key.properties")
 def keystoreProperties = new Properties()
 def isTestBuild = System.getenv("PICA_TEST_BUILD") == "true"
+def isReleaseBuild = System.getenv("PICA_RELEASE_BUILD") == "true"
 if (keystorePropertiesFile.exists()) {
     keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
 } else if (!isTestBuild) {
@@ -40,7 +41,7 @@ android {
         abi {
             reset()
             include 'arm64-v8a', 'x86_64'
-            enable !isTestBuild
+            enable !(isTestBuild || isReleaseBuild)
             universalApk true
         }
     }
@@ -60,7 +61,7 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.github.pacalini.pica_comic"
+        applicationId isTestBuild ? "com.github.pacalini.pica_comic" : "com.github.et3rw.pica_comic"
         if (isTestBuild) {
             applicationIdSuffix ".repairtest514"
         }
@@ -77,6 +78,7 @@ android {
     signingConfigs {
         debug {
             if (!isTestBuild) {
+                storeType keystoreProperties.getProperty('storeType', 'JKS')
                 storeFile file(keystoreProperties['storeFile'])
                 storePassword keystoreProperties['storePassword']
                 keyAlias keystoreProperties['keyAlias']
@@ -85,6 +87,7 @@ android {
         }
         release {
             if (!isTestBuild) {
+                storeType keystoreProperties.getProperty('storeType', 'JKS')
                 keyAlias keystoreProperties['keyAlias']
                 keyPassword keystoreProperties['keyPassword']
                 storeFile file(keystoreProperties['storeFile'])
@@ -100,7 +103,7 @@ android {
             applicationVariants.all { variant ->
                 variant.outputs.all { output ->
                     def abi = output.getFilter(com.android.build.OutputFile.ABI)
-                    if (isTestBuild) {
+                    if (isTestBuild || isReleaseBuild) {
                         outputFileName = "app-release.apk"
                     } else if (abi != null) {   // null for the universal-debug, universal-release variants
                         outputFileName = "PicaComic-${variant.versionName}-${abi}.apk"

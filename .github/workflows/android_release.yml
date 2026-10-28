@@ -1,0 +1,86 @@
+name: Build Android Release APK
+run-name: Android release APK - ${{ github.sha }}
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      PICA_RELEASE_BUILD: 'true'
+      FLUTTER_SUPPRESS_ANALYTICS: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.0'
+          channel: stable
+          cache: true
+      - name: Configure persistent release signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEYSTORE_PASSWORD }}
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, base64
+          os.umask(0o077)
+          encoded = os.environ['KEYSTORE_BASE64']
+          password = os.environ['KEYSTORE_PASSWORD']
+          if not encoded or not password:
+              raise RuntimeError('Persistent release signing secrets are missing')
+          keystore = pathlib.Path(os.environ['RUNNER_TEMP']) / 'pica-release.p12'
+          with keystore.open('xb') as f:
+              f.write(base64.b64decode(encoded, validate=True))
+          with pathlib.Path('android/key.properties').open('x') as f:
+              f.write(f'storeFile={keystore}\nstoreType=PKCS12\nkeyAlias=pica-release\nstorePassword={password}\nkeyPassword={password}\n')
+          PY
+      - name: Install locked dependencies
+        run: flutter pub get --enforce-lockfile
+      - name: Regression tests
+        run: >-
+          flutter test --no-pub
+          test/nhentai_login_flow_test.dart
+          test/nhentai_page_parser_test.dart
+          test/nhentai_list_tags_test.dart
+          test/nhentai_sort_pagination_test.dart
+          test/cookie_logout_test.dart
+          test/network_log_redaction_test.dart
+          test/jm_login_flow_test.dart
+          test/account_login_page_test.dart
+      - name: Build release APK
+        run: flutter build apk --release --no-pub --target-platform android-arm64,android-x64
+      - name: Verify and package APK
+        run: |
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk dist/PicaComic-5.1.5.apk
+          python3 - <<'PY'
+          import os, pathlib, re, subprocess
+          tools = pathlib.Path(os.environ['ANDROID_HOME']) / 'build-tools'
+          versions = [p for p in tools.iterdir() if re.fullmatch(r'\d+\.\d+\.\d+', p.name)]
+          sdk = max(versions, key=lambda p: tuple(map(int, p.name.split('.'))))
+          apk = 'dist/PicaComic-5.1.5.apk'
+          signature = subprocess.check_output([str(sdk/'apksigner'), 'verify', '--verbose', '--print-certs', apk], text=True)
+          expected = 'd7d2aa05487ac22f2b9ec2147d5629535ed76b50938a412707ab901161b8903b'
+          assert f'Signer #1 certificate SHA-256 digest: {expected}' in signature, 'Unexpected signing certificate'
+          info = subprocess.check_output([str(sdk/'aapt'), 'dump', 'badging', apk], text=True)
+          assert "package: name='com.github.et3rw.pica_comic' versionCode='5015' versionName='5.1.5'" in info, 'Unexpected package/version'
+          print(signature)
+          print(info.splitlines()[0])
+          PY
+          cd dist
+          sha256sum PicaComic-5.1.5.apk > SHA256SUMS-android.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PicaComic-5.1.5-android
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
