@@ -1,0 +1,67 @@
+name: Build macOS Release App
+run-name: macOS release app - ${{ github.sha }}
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      FLUTTER_SUPPRESS_ANALYTICS: 'true'
+      COCOAPODS_DISABLE_STATS: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode
+        run: sudo xcode-select --switch /Applications/Xcode_26.3.app
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.0'
+          channel: stable
+          cache: true
+      - name: Install locked dependencies
+        run: flutter pub get --enforce-lockfile
+      - name: Build universal app
+        run: |
+          flutter config --no-enable-macos-arm64-only
+          flutter build macos --release --no-pub
+      - name: Verify and package macOS app
+        run: |
+          python3 - <<'PY'
+          import pathlib, plistlib, subprocess
+          app = pathlib.Path('build/macos/Build/Products/Release/pica_comic.app')
+          with (app / 'Contents/Info.plist').open('rb') as f:
+              info = plistlib.load(f)
+          assert info['CFBundleShortVersionString'] == '5.1.5', info
+          assert info['CFBundleVersion'] == '5015', info
+          assert info['CFBundleIdentifier'] == 'com.github.pacalini.picaComic', info
+          assert info['LSMinimumSystemVersion'] == '12.4', info
+          checked = set()
+          for file in app.rglob('*'):
+              if not file.is_file() or file.resolve() in checked:
+                  continue
+              kind = subprocess.check_output(['file', '-b', str(file)], text=True)
+              if 'Mach-O' not in kind:
+                  continue
+              checked.add(file.resolve())
+              archs = subprocess.check_output(['lipo', '-archs', str(file)], text=True).split()
+              assert set(archs) == {'arm64', 'x86_64'}, (str(file), archs)
+              print('Verified universal binary:', file.relative_to(app))
+          assert checked, 'No native binaries found'
+          print('Verified macOS app:', info['CFBundleShortVersionString'], info['CFBundleVersion'], info['LSMinimumSystemVersion'])
+          PY
+          codesign --verify --deep --strict --verbose=2 build/macos/Build/Products/Release/pica_comic.app
+          mkdir -p dist
+          ditto -c -k --keepParent build/macos/Build/Products/Release/pica_comic.app dist/PicaComic-5.1.5-macos-universal.zip
+          cd dist
+          shasum -a 256 PicaComic-5.1.5-macos-universal.zip > SHA256SUMS-macos.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PicaComic-5.1.5-macos
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
