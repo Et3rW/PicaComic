@@ -24,6 +24,7 @@ import '../app_dio.dart';
 import '../http_client.dart';
 import '../res.dart';
 import 'headers.dart';
+import 'domain_selection.dart';
 import 'jm_image.dart';
 import 'jm_models.dart';
 
@@ -81,13 +82,19 @@ class JmNetwork {
 
   factory JmNetwork() => cache == null ? (cache = JmNetwork.create()) : cache!;
 
-  JmNetwork.create();
+  JmNetwork.create({Dio Function(BaseOptions)? dioFactory})
+      : _dioFactory = dioFactory ?? ((options) => logDio(options));
+
+  final Dio Function(BaseOptions) _dioFactory;
 
   static JmNetwork? cache;
 
   static List<String> get domains => appdata.appSettings.jmApiDomains;
 
-  String get baseUrl => "https://${domains[int.parse(appdata.settings[17])]}";
+  String get baseUrl {
+    final index = int.tryParse(appdata.settings[17]) ?? 0;
+    return 'https://${domains[index >= 0 && index < domains.length ? index : 0]}';
+  }
 
   static const domainUrls = [
     "https://rup4a04-c02.tos-cn-hongkong.bytepluses.com/newsvr-2025.txt",
@@ -106,6 +113,7 @@ class JmNetwork {
   ];
 
   bool _performingLogin = false;
+  int _loginRevision = 0;
 
   ///解密数据
   static String convertData(String input, String secret) {
@@ -145,10 +153,13 @@ class JmNetwork {
             "Accept-Encoding": "gzip",
             "user-agent": ua,
           },
+          connectTimeout: const Duration(seconds: 8),
+          receiveTimeout: const Duration(seconds: 10),
         )
     );
     try {
-      var res = await dio.get("$baseUrl/static/jmapp3apk/version.json");
+      var res = await dio.get("$baseUrl/static/jmapp3apk/version.json")
+          .timeout(const Duration(seconds: 20));
       try {
         String version = res.data['version'];
         if (version.isNotEmpty) {
@@ -164,12 +175,16 @@ class JmNetwork {
         print(e);
       }
       return Res(null, errorMessage: e.toString());
+    } finally {
+      dio.close(force: true);
     }
   }
 
   Future<List<String>> tryFetchAndDecrypt(String url) async {
     var dio = Dio(
         BaseOptions(
+          connectTimeout: const Duration(seconds: 8),
+          receiveTimeout: const Duration(seconds: 10),
           headers: {
             ...getBaseHeaders(),
             "user-agent": ua,
@@ -177,13 +192,13 @@ class JmNetwork {
         )
     );
     try {
-      var res = await dio.get(url);
+      var res = await dio.get(url).timeout(const Duration(seconds: 15));
       var jsonData = json.decode(convertData(
           res.data,
           String.fromCharCodes(domainSecret)
       )) as Map<String, dynamic>;
       var domains = List<String>.from(jsonData['Server']);
-      domains = domains.sublist(0, 4);
+      domains = domains.take(4).toList();
       return domains;
     } catch (e, s) {
       if (kDebugMode) {
@@ -191,6 +206,8 @@ class JmNetwork {
       }
       LogManager.addLog(LogLevel.error, "Network", "$e\n$s");
       return [];
+    } finally {
+      dio.close(force: true);
     }
   }
 
@@ -205,36 +222,29 @@ class JmNetwork {
   }
 
   Future<int?> selectDomain() async {
-    int time = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    var dio = Dio(getApiOptions(time, post: true));
-    dio.options.validateStatus = (status) {
-      return true;
-    };
-
-    Completer<int?> completer = Completer();
-    bool passed = false;
-
-    for (var domain in domains) {
-      () async {
-        try {
-          var res = await dio.post(
-            "https://$domain/login",
-            data: "&",
-          );
-
-          if (res.statusCode == 401 && !passed) {
-            passed = true;
-            completer.complete(domains.indexOf(domain));
-          }
-        } catch (e) {
-          if (kDebugMode) {
-            LogManager.addLog(LogLevel.error, "Network", "$e");
-          }
-        }
-      } ();
+    await setNetworkProxy().timeout(const Duration(seconds: 5));
+    final time = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final dio = _dioFactory(getApiOptions(time, post: true));
+    final cancel = CancelToken();
+    try {
+      return await selectJmDomain(List.of(domains), (domain) async {
+        final res = await dio.post(
+          'https://$domain/login',
+          data: '&',
+          options: Options(validateStatus: (_) => true, followRedirects: false),
+          cancelToken: cancel,
+        );
+        // A generic proxy/HTML 401 does not identify a functioning JM API.
+        if (res.statusCode != 401) return false;
+        final body = res.data is List<int>
+            ? jsonDecode(utf8.decode(res.data as List<int>))
+            : res.data is String ? jsonDecode(res.data as String) : res.data;
+        return body is Map && body['errorMsg'] is String;
+      });
+    } finally {
+      cancel.cancel('JM line selection finished');
+      dio.close(force: true);
     }
-
-    return completer.future;
   }
 
   ///get请求, 返回Json数据中的data
@@ -293,47 +303,62 @@ class JmNetwork {
 
   /// post请求
   Future<Res<dynamic>> post(String url, String data) async {
+    Dio? dio;
+    final cancel = CancelToken();
     try {
-      await setNetworkProxy();
+      await setNetworkProxy().timeout(const Duration(seconds: 5));
       int time = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-      var dio = logDio(getApiOptions(time, post: true));
+      dio = _dioFactory(getApiOptions(time, post: true));
       dio.interceptors.add(CookieManager(cookieJar));
       var res = await dio.post(url,
           options: Options(validateStatus: (i) => i == 200 || i == 401),
-          data: data);
+          data: data, cancelToken: cancel).timeout(const Duration(seconds: 30),
+              onTimeout: () {
+        cancel.cancel('JM request timed out');
+        throw TimeoutException('JM request timed out');
+      });
       if (res.statusCode == 401) {
         return Res(null,
             errorMessage: const JsonDecoder().convert(
                     const Utf8Decoder().convert(res.data))["errorMsg"] ??
                 "Unknown Error".toString());
       }
-      var resData = convertData(
-          (const JsonDecoder()
-              .convert(const Utf8Decoder().convert(res.data)))["data"],
-          "$time$kJmSecret");
-      return Res<dynamic>(const JsonDecoder().convert(resData));
+      final envelope = jsonDecode(utf8.decode(res.data as List<int>));
+      final decoded = jsonDecode(convertData(envelope['data'], '$time$kJmSecret'));
+      // Some API versions return the AVS session in the login payload.
+      if (Uri.parse(url).path == '/login' && decoded is Map &&
+          decoded['username'] != null && decoded['uid'] != null) {
+        final session = decoded['s'] ?? envelope['s'];
+        if (session is String && session.isNotEmpty) {
+          await cookieJar.saveFromResponse(Uri.parse(url), [
+            Cookie('AVS', session)..path = '/'..secure = true..httpOnly = true,
+          ]);
+        }
+      }
+      return Res<dynamic>(decoded);
+    } on TimeoutException {
+      return const Res.error('禁漫请求超时，请检查网络或更新 API 域名后重试');
     } on DioException catch (e) {
-      if (kDebugMode) {
-        print(e);
-      }
-      if (e.type != DioExceptionType.unknown) {
-        return const Res.error("Network Error");
-      } else {
-        return Res.error(e.toString());
-      }
-    } catch (e, s) {
-      if (kDebugMode) {
-        print(e);
-      }
-      LogManager.addLog(LogLevel.error, "Network", "$e\n$s");
-      return const Res.error("Network Error");
+      final status = e.response?.statusCode;
+      final timedOut = {
+        DioExceptionType.connectionTimeout,
+        DioExceptionType.sendTimeout,
+        DioExceptionType.receiveTimeout,
+      }.contains(e.type);
+      return Res.error(status == null
+          ? '禁漫${timedOut ? "请求超时" : "网络连接失败"}，请检查网络或更新 API 域名'
+          : '禁漫服务器返回 HTTP $status，请更新 API 域名或稍后重试');
+    } catch (_) {
+      return const Res.error('禁漫响应解析失败，请更新 API 域名或稍后重试');
+    } finally {
+      dio?.close(force: true);
     }
   }
 
-  Future<void> updateImgUrl(int index) async {
+  Future<void> updateImgUrl(int index, {bool allowReLogin = true}) async {
     try {
       var res = await get(
-          "$baseUrl/setting?app_img_shunt=$index"
+          "$baseUrl/setting?app_img_shunt=$index", isRetry: !allowReLogin,
       );
       var url = res.data["img_host"];
       appdata.settings[86] = url;
@@ -731,30 +756,51 @@ class JmNetwork {
   }
 
   Future<Res<bool>> login(String account, String pwd) async {
-
-    if (appdata.settings[15] == "1") {
-      var i = await selectDomain();
-      if (i != null) {
-        appdata.settings[17] = i.toString();
-        LogManager.addLog(LogLevel.info, "Network", "Selected JM API Stream ${i + 1}: ${domains[i]}");
-      }
-    }
+    if (_performingLogin) return const Res.error('禁漫正在登录，请稍候再试');
     _performingLogin = true;
+    final revision = ++_loginRevision;
     try {
+      if (appdata.settings[15] == "1") {
+        final i = await selectDomain();
+        if (i == null) {
+          return const Res.error('禁漫所有 API 线路均不可用，请在漫画源设置中更新 API 域名，或关闭自动选择域名后手动切换');
+        }
+        appdata.settings[17] = i.toString();
+      }
+      if (revision != _loginRevision) return const Res.error('登录已取消');
       var res = await post("$baseUrl/login",
           "username=${Uri.encodeComponent(account)}&password=${Uri.encodeComponent(pwd)}");
+      if (revision != _loginRevision) {
+        await cookieJar.deleteAll();
+        return const Res.error('登录已取消');
+      }
       if (res.error) {
         return Res(null, errorMessage: res.errorMessage);
       }
+      if (res.data is! Map || res.data['username'] == null || res.data['uid'] == null) {
+        return const Res.error('禁漫登录响应缺少账号信息，请更新 API 域名后重试');
+      }
       jm.data['name'] = res.data['username'];
       jm.data['id'] = res.data['uid'];
-      appdata.writeData();
+      unawaited(_finishLogin(revision));
       return const Res(true);
+    } catch (_) {
+      return const Res.error('禁漫登录失败，请检查网络或更新 API 域名后重试');
     } finally {
       _performingLogin = false;
-      await updateImgUrl(int.parse(appdata.settings[37]) + 1);
-      if (appdata.settings[88] == "1") {
-        var res = await dailyChk();
+    }
+  }
+
+  Future<void> _finishLogin(int revision) async {
+    // Optional work must never keep the account screen waiting or re-enter login.
+    await Future<void>.delayed(Duration.zero);
+    if (revision != _loginRevision) return;
+    try {
+      await appdata.updateSettings();
+      await updateImgUrl((int.tryParse(appdata.settings[37]) ?? 0) + 1,
+          allowReLogin: false);
+      if (revision == _loginRevision && appdata.settings[88] == "1") {
+        final res = await dailyChk(allowReLogin: false);
         LogManager.addLog(
             res.error ? LogLevel.error : LogLevel.info,
             "Network",
@@ -763,6 +809,8 @@ class JmNetwork {
                 : "JM auto check-in succeed\n${res.subData}"
         );
       }
+    } catch (_) {
+      LogManager.addLog(LogLevel.warning, 'Network', 'JM post-login setup failed');
     }
   }
 
@@ -773,6 +821,7 @@ class JmNetwork {
   }
 
   Future<void> logout() async {
+    _loginRevision++;
     await cookieJar.deleteAll();
   }
 
@@ -1038,24 +1087,26 @@ class JmNetwork {
     }
   }
 
-  Future<Res<bool>> dailyChk() async {
+  Future<Res<bool>> dailyChk({bool allowReLogin = true}) async {
     try {
       var res = await get(
-          "$baseUrl/daily?user_id=${jm.data['id']}");
-      var dailyId = res.data['daily_id'];
+          "$baseUrl/daily?user_id=${jm.data['id']}", isRetry: !allowReLogin);
       if (res.error) {
         return Res(null, errorMessage: res.errorMessage);
-      } else if (dailyId == null) {
+      }
+      final dailyId = res.data['daily_id'];
+      if (dailyId == null) {
         return const Res(null, errorMessage: "daily_id not found");
       }
       res = await post(
           "$baseUrl/daily_chk",
           "user_id=${jm.data['id']}&daily_id=$dailyId&"
       );
-      String msg = res.data['msg'];
       if (res.error) {
         return Res(null, errorMessage: res.errorMessage);
-      } else if (msg.startsWith("今天")
+      }
+      String msg = res.data['msg'];
+      if (msg.startsWith("今天")
               || msg.contains("Jcoin")
               || msg.contains("EXP")) {
         return Res(true, subData: msg);

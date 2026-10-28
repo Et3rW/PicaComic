@@ -58,6 +58,8 @@ BaseOptions getApiOptions(int time,
   return BaseOptions(
       receiveDataWhenStatusError: true,
       connectTimeout: const Duration(seconds: 8),
+      sendTimeout: const Duration(seconds: 8),
+      receiveTimeout: const Duration(seconds: 8),
       responseType: byte ? ResponseType.bytes : null,
       headers: {
         ...getBaseHeaders(),

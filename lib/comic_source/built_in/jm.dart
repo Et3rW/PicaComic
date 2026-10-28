@@ -180,6 +180,7 @@ final jm = ComicSource.named(
     registerWebsite: "https://18comic.vip/signup",
     login: (account, pwd) async {
       var res = await jmNetwork.login(account, pwd);
+      if (res.error) return res;
       var a = <String>[account, pwd];
       var source = ComicSource.find('jm')!;
       source.data['account'] = a;

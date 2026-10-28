@@ -71,7 +71,7 @@ class AccountsPage extends StatelessWidget {
             }
             if (element.account!.login != null && context.mounted) {
               await context.to(
-                () => _LoginPage(
+                () => AccountLoginPage(
                   login: element.account!.login!,
                   registerWebsite: element.account!.registerWebsite,
                 ),
@@ -100,21 +100,25 @@ class AccountsPage extends StatelessWidget {
             title: Text("重新登录".tl),
             subtitle: Text("如果登录失效点击此处".tl),
             onTap: () async {
+              if (logic._reLogin[element.key] == true) return;
               if (element.data["account"] == null) {
                 showToast(message: "无数据".tl);
                 return;
               }
               logic._reLogin[element.key] = true;
               logic.update();
-              final List account = element.data["account"];
-              var res = await element.account!.login!(account[0], account[1]);
-              if (res.error) {
-                showToast(message: res.errorMessage!);
-              } else {
-                showToast(message: "重新登录成功".tl);
+              try {
+                final List account = element.data["account"];
+                var res = await element.account!.login!(account[0], account[1]);
+                if (context.mounted) {
+                  showToast(message: res.error ? res.errorMessageWithoutNull : "重新登录成功".tl);
+                }
+              } catch (_) {
+                if (context.mounted) showToast(message: "登录失败，请重试".tl);
+              } finally {
+                logic._reLogin[element.key] = false;
+                if (context.mounted) logic.update();
               }
-              logic._reLogin[element.key] = false;
-              logic.update();
             },
             trailing: loading
                 ? const SizedBox.square(
@@ -147,18 +151,18 @@ class AccountsPage extends StatelessWidget {
   }
 }
 
-class _LoginPage extends StatefulWidget {
-  const _LoginPage({required this.login, this.registerWebsite});
+class AccountLoginPage extends StatefulWidget {
+  const AccountLoginPage({super.key, required this.login, this.registerWebsite});
 
   final LoginFunction login;
 
   final String? registerWebsite;
 
   @override
-  State<_LoginPage> createState() => _LoginPageState();
+  State<AccountLoginPage> createState() => _LoginPageState();
 }
 
-class _LoginPageState extends State<_LoginPage> {
+class _LoginPageState extends State<AccountLoginPage> {
   String username = "";
   String password = "";
   bool loading = false;
@@ -222,7 +226,8 @@ class _LoginPageState extends State<_LoginPage> {
     );
   }
 
-  void login() {
+  Future<void> login() async {
+    if (loading) return;
     if (username.isEmpty || password.isEmpty) {
       showToast(message: "不能为空".tl, icon: const Icon(Icons.error_outline));
       return;
@@ -230,18 +235,21 @@ class _LoginPageState extends State<_LoginPage> {
     setState(() {
       loading = true;
     });
-    widget.login(username, password).then((value) {
+    try {
+      final value = await widget.login(username, password);
+      if (!mounted) return;
       if (value.error) {
-        showToast(message: value.errorMessage!);
-        setState(() {
-          loading = false;
-        });
+        showToast(message: value.errorMessageWithoutNull);
       } else {
         showToast(message: "登录成功".tl, icon: const Icon(Icons.check));
         if(mounted) {
           context.pop();
         }
       }
-    });
+    } catch (_) {
+      if (mounted) showToast(message: "登录失败，请重试".tl);
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
   }
 }
