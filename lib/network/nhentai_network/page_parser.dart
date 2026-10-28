@@ -14,6 +14,40 @@ dynamic nhentaiFetchedPayload(Element script) {
   return jsonDecode(wrapper['body'] as String);
 }
 
+/// Convert a category slug back to a quoted namespace search phrase.
+String nhentaiCategoryQuery(String path) {
+  final parts =
+      Uri.parse(path).pathSegments.where((s) => s.isNotEmpty).toList();
+  if (parts.length != 2 ||
+      !const {
+        'tag',
+        'artist',
+        'group',
+        'parody',
+        'character',
+        'language',
+        'category',
+      }.contains(parts.first)) {
+    throw const FormatException('Invalid nhentai category path');
+  }
+  final name = parts.last
+      .replaceAll('-', ' ')
+      .replaceAll('\\', '\\\\')
+      .replaceAll('"', '\\"');
+  return '${parts.first}:"$name"';
+}
+
+/// Only the page parameter is a page number; queries can contain other digits.
+int nhentaiLastPage(Document document, int currentPage) {
+  var last = currentPage;
+  for (final link in document.querySelectorAll('section.pagination a[href]')) {
+    final uri = Uri.tryParse(link.attributes['href']!);
+    final page = int.tryParse(uri?.queryParameters['page'] ?? '');
+    if (page != null && page > last) last = page;
+  }
+  return last;
+}
+
 /// Index list-page metadata once, without fetching every gallery detail page.
 Map<String, Set<String>> nhentaiTagIdsFromFetchedData(Document document) {
   final result = <String, Set<String>>{};

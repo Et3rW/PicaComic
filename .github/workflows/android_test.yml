@@ -33,6 +33,7 @@ jobs:
           test/nhentai_login_flow_test.dart
           test/nhentai_page_parser_test.dart
           test/nhentai_list_tags_test.dart
+          test/nhentai_sort_pagination_test.dart
           test/cookie_logout_test.dart
           test/network_log_redaction_test.dart
       - name: Build release-mode test APK
@@ -41,15 +42,15 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          cp build/app/outputs/flutter-apk/app-release.apk dist/PicaComic-5.1.2-test.apk
+          cp build/app/outputs/flutter-apk/app-release.apk dist/PicaComic-5.1.3-test.apk
           build_tools=$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)
-          "$ANDROID_HOME/build-tools/$build_tools/apksigner" verify --verbose dist/PicaComic-5.1.2-test.apk
-          "$ANDROID_HOME/build-tools/$build_tools/aapt" dump badging dist/PicaComic-5.1.2-test.apk
+          "$ANDROID_HOME/build-tools/$build_tools/apksigner" verify --verbose dist/PicaComic-5.1.3-test.apk
+          "$ANDROID_HOME/build-tools/$build_tools/aapt" dump badging dist/PicaComic-5.1.3-test.apk
           cd dist
-          sha256sum PicaComic-5.1.2-test.apk > SHA256SUMS.txt
+          sha256sum PicaComic-5.1.3-test.apk > SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: PicaComic-5.1.2-test-apk
+          name: PicaComic-5.1.3-test-apk
           path: dist/
           if-no-files-found: error
           retention-days: 30

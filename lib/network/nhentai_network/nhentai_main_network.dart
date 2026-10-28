@@ -196,8 +196,17 @@ class NhentaiNetwork {
     }
     appdata.searchHistory.add(keyword);
     appdata.writeHistory();
-    var res = await get(
-        "$baseUrl/search?q=${Uri.encodeComponent(keyword)}&page=$page${sort.value}");
+    return _search(keyword, page, sort);
+  }
+
+  Future<Res<List<NhentaiComicBrief>>> _search(
+      String keyword, int page, NhentaiSort sort) async {
+    final url = Uri.parse(baseUrl).resolve('/search/').replace(queryParameters: {
+      'q': keyword,
+      'page': '$page',
+      if (sort != NhentaiSort.recent) 'sort': sort.value.substring('&sort='.length),
+    });
+    var res = await get(url.toString());
     if (res.error) {
       return Res.fromErrorRes(res);
     }
@@ -207,10 +216,7 @@ class NhentaiNetwork {
 
       var comicDoms = document.querySelectorAll("div.gallery");
 
-      var lastPagination = document
-          .querySelector("section.pagination > a.last")
-          ?.attributes["href"]
-          ?.nums;
+      final lastPagination = nhentaiLastPage(document, page);
 
       Future.microtask(() {
         try {
@@ -227,7 +233,7 @@ class NhentaiNetwork {
       return Res(
           removeNullValue(List.generate(
               comicDoms.length, (index) => parseComic(comicDoms[index], tagIdsById))),
-          subData: lastPagination == null ? 1 : int.parse(lastPagination));
+          subData: lastPagination);
     } catch (e, s) {
       LogManager.addLog(LogLevel.error, "Data Analyse", "$e\n$s");
       return Res(null, errorMessage: "Failed to Parse Data: $e");
@@ -454,14 +460,15 @@ class NhentaiNetwork {
 
   Future<Res<List<NhentaiComicBrief>>> getCategoryComics(
       String path, int page, NhentaiSort sort) async {
-    var param = switch (sort) {
-      NhentaiSort.recent => '/',
-      NhentaiSort.popularToday => '/popular-today',
-      NhentaiSort.popularWeek => '/popular-week',
-      NhentaiSort.popularMonth => '/popular-month',
-      NhentaiSort.popularAll => '/popular'
-    };
-    var res = await get("$baseUrl$path$param?page=$page");
+    if (sort != NhentaiSort.recent) {
+      // Legacy category /popular-* routes can 404 or ignore the page parameter.
+      // Search supports the same namespace filter with explicit sort and page.
+      return _search(nhentaiCategoryQuery(path), page, sort);
+    }
+    final url = Uri.parse(baseUrl)
+        .resolve('${path.replaceFirst(RegExp(r'/+$'), '')}/')
+        .replace(queryParameters: {'page': '$page'});
+    var res = await get(url.toString());
     if (res.error) {
       return Res.fromErrorRes(res);
     }
@@ -471,10 +478,7 @@ class NhentaiNetwork {
 
       var comicDoms = document.querySelectorAll("div.gallery");
 
-      var lastPagination = document
-          .querySelector("section.pagination > a.last")
-          ?.attributes["href"]
-          ?.nums;
+      final lastPagination = nhentaiLastPage(document, page);
 
       Future.microtask(() {
         try {
@@ -491,7 +495,7 @@ class NhentaiNetwork {
       return Res(
           removeNullValue(List.generate(
               comicDoms.length, (index) => parseComic(comicDoms[index], tagIdsById))),
-          subData: lastPagination == null ? 1 : int.parse(lastPagination));
+          subData: lastPagination);
     } catch (e, s) {
       LogManager.addLog(LogLevel.error, "Data Analyse", "$e\n$s");
       return Res(null, errorMessage: "Failed to Parse Data: $e");
