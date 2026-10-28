@@ -14,6 +14,58 @@ dynamic nhentaiFetchedPayload(Element script) {
   return jsonDecode(wrapper['body'] as String);
 }
 
+/// Index list-page metadata once, without fetching every gallery detail page.
+Map<String, Set<String>> nhentaiTagIdsFromFetchedData(Document document) {
+  final result = <String, Set<String>>{};
+  for (final script
+      in document.querySelectorAll('script[data-sveltekit-fetched]')) {
+    try {
+      final payload = nhentaiFetchedPayload(script);
+      final dynamic galleries = payload is List
+          ? payload
+          : payload is Map && payload['result'] is List
+              ? payload['result']
+              : payload is Map && payload['id'] != null
+                  ? [payload]
+                  : null;
+      if (galleries is! List) continue;
+      for (final gallery in galleries) {
+        if (gallery is! Map || gallery['tag_ids'] is! List) continue;
+        final id = _numericId(gallery['id']);
+        if (id == null) continue;
+        final tags = result.putIfAbsent(id, () => <String>{});
+        for (final value in gallery['tag_ids'] as List) {
+          final tag = _numericId(value);
+          if (tag != null) tags.add(tag);
+        }
+      }
+    } catch (_) {
+      // A malformed or unrelated block must not hide other galleries' tags.
+    }
+  }
+  return result;
+}
+
+String? _numericId(dynamic value) {
+  if (value is! int && value is! String) return null;
+  final id = value.toString().trim();
+  return RegExp(r'^\d+$').hasMatch(id) ? id : null;
+}
+
+Set<String> nhentaiCardTagIds(Element card, Iterable<String> fetchedTags) => {
+      ...fetchedTags,
+      for (final value
+          in (card.attributes['data-tags'] ?? '').split(RegExp(r'\s+')))
+        if (_numericId(value) case final String id) id,
+    };
+
+String nhentaiLanguage(Set<String> tags) {
+  if (tags.contains('12227')) return 'English';
+  if (tags.contains('6346')) return '日本語';
+  if (tags.contains('29963')) return '中文';
+  return 'Unknown';
+}
+
 bool nhentaiFavoriteState(Document document, String id) {
   for (final script in document.querySelectorAll(
     'script[data-sveltekit-fetched]',
