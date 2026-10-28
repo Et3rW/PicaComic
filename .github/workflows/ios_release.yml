@@ -1,0 +1,59 @@
+name: Build iOS Release IPA
+run-name: iOS release IPA - ${{ github.sha }}
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      FLUTTER_SUPPRESS_ANALYTICS: 'true'
+      COCOAPODS_DISABLE_STATS: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode
+        run: sudo xcode-select --switch /Applications/Xcode_26.3.app
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.0'
+          channel: stable
+          cache: true
+      - name: Install locked dependencies
+        run: flutter pub get --enforce-lockfile
+      - name: Build unsigned device app
+        run: flutter build ios --release --no-pub --no-codesign
+      - name: Verify and package IPA
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import pathlib, plistlib, subprocess
+          app = pathlib.Path('build/ios/iphoneos/Runner.app')
+          with (app / 'Info.plist').open('rb') as f:
+              info = plistlib.load(f)
+          assert info['CFBundleShortVersionString'] == '5.1.5', info
+          assert info['CFBundleVersion'] == '5015', info
+          assert info['CFBundleIdentifier'] == 'com.github.pacalini.picaComic', info
+          assert info['CFBundleSupportedPlatforms'] == ['iPhoneOS'], info
+          executable = app / info['CFBundleExecutable']
+          arch = subprocess.check_output(['lipo', '-archs', str(executable)], text=True).strip()
+          assert arch == 'arm64', arch
+          print('Verified device app:', info['CFBundleShortVersionString'], info['CFBundleVersion'], info['MinimumOSVersion'], arch)
+          PY
+          mkdir -p dist/Payload
+          ditto build/ios/iphoneos/Runner.app dist/Payload/Runner.app
+          cd dist
+          ditto -c -k --keepParent Payload PicaComic-5.1.5-unsigned.ipa
+          shasum -a 256 PicaComic-5.1.5-unsigned.ipa > SHA256SUMS-ios.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PicaComic-5.1.5-ios
+          path: |
+            dist/PicaComic-5.1.5-unsigned.ipa
+            dist/SHA256SUMS-ios.txt
+          if-no-files-found: error
+          retention-days: 30
