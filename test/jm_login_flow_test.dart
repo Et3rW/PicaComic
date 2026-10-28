@@ -27,6 +27,8 @@ class LoginNetwork extends JmNetwork {
   bool? checkinRelogin;
   Future<Res<dynamic>>? pendingPost;
   Completer<void>? pendingImage;
+  final imageStarted = Completer<void>();
+  final checkinStarted = Completer<void>();
   Res<dynamic> response = const Res.error('Incorrect credentials');
 
   @override
@@ -45,6 +47,7 @@ class LoginNetwork extends JmNetwork {
   Future<void> updateImgUrl(int index, {bool allowReLogin = true}) async {
     images++;
     imageRelogin = allowReLogin;
+    if (!imageStarted.isCompleted) imageStarted.complete();
     await pendingImage?.future;
   }
 
@@ -52,6 +55,7 @@ class LoginNetwork extends JmNetwork {
   Future<Res<bool>> dailyChk({bool allowReLogin = true}) async {
     checkins++;
     checkinRelogin = allowReLogin;
+    if (!checkinStarted.isCompleted) checkinStarted.complete();
     return const Res.error('Optional check-in unavailable');
   }
 }
@@ -202,12 +206,12 @@ void main() {
         .login('sample', 'dummy')
         .timeout(const Duration(seconds: 1));
     expect(result.success, isTrue);
-    await Future<void>.delayed(const Duration(milliseconds: 10));
+    await network.imageStarted.future.timeout(const Duration(seconds: 5));
     expect(network.images, 1);
     expect(network.imageRelogin, isFalse);
     expect(network.checkins, 0);
     network.pendingImage!.complete();
-    await Future<void>.delayed(Duration.zero);
+    await network.checkinStarted.future.timeout(const Duration(seconds: 5));
     expect(network.checkins, 1);
     expect(network.checkinRelogin, isFalse);
   });
