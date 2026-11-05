@@ -103,4 +103,42 @@ void main() {
     });
     expect(appdata.searchHistory.last, 'tag:glasses language:chinese');
   });
+
+  test('autocomplete sends one request without type and parses results',
+      () async {
+    final bodies = <Object?>[];
+    network.dio.close();
+    network.dio = Dio()
+      ..interceptors.add(InterceptorsWrapper(onRequest: (options, handler) {
+        requests.add(options.uri);
+        bodies.add(options.data);
+        handler.resolve(Response<dynamic>(
+          requestOptions: options,
+          statusCode: 200,
+          data: [
+            {'type': 'parody', 'name': 'touhou project', 'count': 23493},
+            {'type': 'artist', 'name': 'to', 'count': 6},
+          ],
+        ));
+      }));
+    final res = await network.autocompleteTags('to');
+    expect(requests.single.path, '/api/v2/tags/autocomplete');
+    expect(bodies.single, {'query': 'to', 'limit': 20});
+    expect(res.data.map((e) => '${e.type}:${e.name}'),
+        ['parody:touhou project', 'artist:to']);
+  });
+
+  test('autocomplete failure is reported as an error', () async {
+    network.dio.close();
+    network.dio = Dio()
+      ..interceptors.add(InterceptorsWrapper(onRequest: (options, handler) {
+        handler.reject(DioException(
+          requestOptions: options,
+          type: DioExceptionType.badResponse,
+          response: Response(requestOptions: options, statusCode: 429),
+        ));
+      }));
+    final res = await network.autocompleteTags('to');
+    expect(res.error, isTrue);
+  });
 }

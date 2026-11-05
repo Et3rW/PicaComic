@@ -183,14 +183,15 @@ class _NhentaiTagSearchPageState extends State<NhentaiTagSearchPage> {
     debounce = Timer(const Duration(milliseconds: 450), () async {
       var token = cancelToken = CancelToken();
       setState(() => loadingRemote = true);
-      var result = await NhentaiNetwork()
-          .autocompleteTagsByTypes(text, cancelToken: token);
+      var result =
+          await NhentaiNetwork().autocompleteTags(text, cancelToken: token);
       if (!mounted || token.isCancelled || inputController.text.trim() != text) {
         return;
       }
       setState(() {
         loadingRemote = false;
-        remoteSuggestions = result;
+        // On failure keep the local suggestions only.
+        remoteSuggestions = result.dataOrNull ?? const [];
       });
     });
   }
@@ -495,12 +496,14 @@ class _NhentaiTagSearchPageState extends State<NhentaiTagSearchPage> {
   }
 
   Widget buildFilters() {
+    // Checked against nhentai on 2026-11-06: `uploaded:<1d` and
+    // `uploaded:<1y` return nothing, while 24h / 365d work.
     const uploadedOptions = <(String, int?, String)>[
       ('不限', null, ''),
-      ('24小时内', 1, 'd'),
+      ('24小时内', 24, 'h'),
       ('一周内', 7, 'd'),
       ('一个月内', 30, 'd'),
-      ('一年内', 1, 'y'),
+      ('一年内', 365, 'd'),
     ];
     var uploaded = query.filterOf(NhentaiNumericField.uploaded, '<');
     Widget pagesField(TextEditingController c, String label) => SizedBox(

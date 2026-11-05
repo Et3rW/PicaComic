@@ -23,15 +23,6 @@ const nhentaiTagNamespaces = <String>[
   'category',
 ];
 
-/// Namespaces that the autocomplete API can suggest for free text.
-const nhentaiAutocompleteNamespaces = <String>[
-  'tag',
-  'artist',
-  'parody',
-  'character',
-  'group',
-];
-
 /// Gallery tag field names on the nhentai detail page, mapped to namespaces.
 String? nhentaiNamespaceOfField(String field) {
   return switch (field) {

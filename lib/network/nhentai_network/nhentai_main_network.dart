@@ -214,10 +214,12 @@ class NhentaiNetwork {
   ///
   /// The endpoint works without login and returns
   /// `[{"type": "tag", "name": "big breasts", "count": 240332, ...}]`.
+  /// Without [type] it mixes all namespaces in one request, which keeps
+  /// typing from firing several requests (nhentai rate-limits bursts).
   Future<Res<List<NhentaiTagSuggestion>>> autocompleteTags(
-    String type,
     String query, {
-    int limit = 10,
+    String? type,
+    int limit = 20,
     CancelToken? cancelToken,
   }) async {
     if (cookieJar == null) {
@@ -226,7 +228,11 @@ class NhentaiNetwork {
     try {
       final res = await dio.post<dynamic>(
         '$baseUrl/api/v2/tags/autocomplete',
-        data: {'type': type, 'query': query, 'limit': limit},
+        data: {
+          if (type != null) 'type': type,
+          'query': query,
+          'limit': limit,
+        },
         options: Options(
           headers: {'Accept': 'application/json'},
           contentType: Headers.jsonContentType,
@@ -243,29 +249,6 @@ class NhentaiNetwork {
     } catch (e) {
       return Res(null, errorMessage: e.toString());
     }
-  }
-
-  /// Queries several namespaces in parallel; failed namespaces are skipped.
-  Future<List<NhentaiTagSuggestion>> autocompleteTagsByTypes(
-    String query, {
-    List<String> types = const ['tag', 'artist', 'parody', 'character', 'group'],
-    int limit = 8,
-    CancelToken? cancelToken,
-  }) async {
-    final responses = await Future.wait([
-      for (final type in types)
-        autocompleteTags(type, query, limit: limit, cancelToken: cancelToken),
-    ]);
-    final seen = <String>{};
-    final result = <NhentaiTagSuggestion>[];
-    for (final response in responses) {
-      if (response.error) continue;
-      for (final s in response.data) {
-        if (seen.add('${s.type}:${s.name}')) result.add(s);
-      }
-    }
-    result.sort((a, b) => b.count.compareTo(a.count));
-    return result;
   }
 
   Future<Res<List<NhentaiComicBrief>>> _search(
