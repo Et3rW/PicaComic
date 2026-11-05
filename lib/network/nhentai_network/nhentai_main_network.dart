@@ -16,9 +16,11 @@ import '../app_dio.dart';
 import 'models.dart';
 import 'login_flow.dart';
 import 'page_parser.dart';
+import 'tag_query.dart';
 import 'package:html/parser.dart';
 
 export 'models.dart';
+export 'tag_query.dart' show NhentaiTagSuggestion;
 
 class NhentaiNetwork {
   factory NhentaiNetwork() => _cache ?? (_cache = NhentaiNetwork._create());
@@ -191,12 +193,79 @@ class NhentaiNetwork {
 
   Future<Res<List<NhentaiComicBrief>>> search(String keyword, int page,
       [NhentaiSort sort = NhentaiSort.recent]) async {
+    addSearchHistory(keyword);
+    return _search(keyword, page, sort);
+  }
+
+  void addSearchHistory(String keyword) {
     if (appdata.searchHistory.contains(keyword)) {
       appdata.searchHistory.remove(keyword);
     }
     appdata.searchHistory.add(keyword);
     appdata.writeHistory();
-    return _search(keyword, page, sort);
+  }
+
+  /// Runs [query] without touching the search history.
+  Future<Res<List<NhentaiComicBrief>>> searchQuery(
+          String query, int page, NhentaiSort sort) =>
+      _search(query, page, sort);
+
+  /// Tag suggestions from `POST /api/v2/tags/autocomplete`.
+  ///
+  /// The endpoint works without login and returns
+  /// `[{"type": "tag", "name": "big breasts", "count": 240332, ...}]`.
+  Future<Res<List<NhentaiTagSuggestion>>> autocompleteTags(
+    String type,
+    String query, {
+    int limit = 10,
+    CancelToken? cancelToken,
+  }) async {
+    if (cookieJar == null) {
+      await init();
+    }
+    try {
+      final res = await dio.post<dynamic>(
+        '$baseUrl/api/v2/tags/autocomplete',
+        data: {'type': type, 'query': query, 'limit': limit},
+        options: Options(
+          headers: {'Accept': 'application/json'},
+          contentType: Headers.jsonContentType,
+          responseType: ResponseType.json,
+        ),
+        cancelToken: cancelToken,
+      );
+      return Res(parseNhentaiTagSuggestions(res.data));
+    } on DioException catch (e) {
+      if (CancelToken.isCancel(e)) {
+        return const Res(null, errorMessage: 'cancelled');
+      }
+      return Res(null, errorMessage: e.message ?? e.toString());
+    } catch (e) {
+      return Res(null, errorMessage: e.toString());
+    }
+  }
+
+  /// Queries several namespaces in parallel; failed namespaces are skipped.
+  Future<List<NhentaiTagSuggestion>> autocompleteTagsByTypes(
+    String query, {
+    List<String> types = const ['tag', 'artist', 'parody', 'character', 'group'],
+    int limit = 8,
+    CancelToken? cancelToken,
+  }) async {
+    final responses = await Future.wait([
+      for (final type in types)
+        autocompleteTags(type, query, limit: limit, cancelToken: cancelToken),
+    ]);
+    final seen = <String>{};
+    final result = <NhentaiTagSuggestion>[];
+    for (final response in responses) {
+      if (response.error) continue;
+      for (final s in response.data) {
+        if (seen.add('${s.type}:${s.name}')) result.add(s);
+      }
+    }
+    result.sort((a, b) => b.count.compareTo(a.count));
+    return result;
   }
 
   Future<Res<List<NhentaiComicBrief>>> _search(
