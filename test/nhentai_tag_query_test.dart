@@ -220,6 +220,7 @@ void main() {
           'tag:"yaoi" foo -tag:"guro"');
       expect(NhentaiTagPresets.applyDefaultExcludes(''),
           '-tag:"yaoi" -tag:"guro"');
+      expect(NhentaiTagPresets.applyDefaultExcludes(' 177013 '), ' 177013 ');
       expect(
           NhentaiTagPresets.applyDefaultExcludes(
               '-tag:"yaoi" -tag:"guro"'),

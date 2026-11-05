@@ -206,13 +206,19 @@ class _NhentaiTagSearchPageState extends State<NhentaiTagSearchPage> {
   void addTyped({bool exclude = false}) {
     var text = inputController.text.trim();
     if (text.isEmpty) return;
+    // E-Hentai style `female:glasses` is a plain tag on nhentai.
+    var ehStyle = RegExp(r'^(-?)(?:female|male|mixed|other):"?([^"]+)"?$')
+        .firstMatch(text);
+    if (ehStyle != null) {
+      text = '${ehStyle.group(1)}tag:"${ehStyle.group(2)}"';
+    }
     var parsed = NhentaiTagQuery.parse(text);
     if (parsed.terms.length == 1 && parsed.text.isEmpty) {
       var term = parsed.terms.single;
       addTerm(exclude ? term.copyWith(exclude: true) : term);
-    } else {
-      addTerm(NhentaiTagTerm('tag', text.replaceAll('"', ''), exclude: exclude));
+      return;
     }
+    addTerm(NhentaiTagTerm('tag', text.replaceAll('"', ''), exclude: exclude));
   }
 
   NhentaiTagQuery buildFinalQuery() {

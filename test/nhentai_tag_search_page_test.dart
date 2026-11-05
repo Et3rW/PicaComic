@@ -92,6 +92,14 @@ void main() {
     expect(NhentaiTagDraft.value.toQuery(), '-artist:"some one"');
   });
 
+  testWidgets('E-Hentai style namespaces become nhentai tags', (tester) async {
+    await openEditor(tester);
+    await tester.enterText(find.byType(TextField).first, 'female:big breasts');
+    await tester.tap(find.byIcon(Icons.remove_circle_outline).first);
+    await tester.pump();
+    expect(NhentaiTagDraft.value.toQuery(), '-tag:"big breasts"');
+  });
+
   testWidgets('excluded tags can become default exclusions', (tester) async {
     await openEditor(tester, initialQuery: 'tag:"a" -tag:"b"');
     await tester.tap(find.text('把当前排除的标签加入默认'));

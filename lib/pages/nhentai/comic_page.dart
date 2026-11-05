@@ -234,7 +234,7 @@ class NhentaiComicPage extends BaseComicPage<NhentaiComic> {
       showToast(
         message: "已加入组合 (@n)".tlParams({"n": "$count"}),
         trailing: TextButton(
-          onPressed: () => openNhentaiTagSearch(App.globalContext!),
+          onPressed: () => openNhentaiTagSearch(context),
           child: Text("去搜索".tl),
         ),
       );
@@ -251,7 +251,7 @@ class NhentaiComicPage extends BaseComicPage<NhentaiComic> {
       ),
       PopupMenuItem(
         child: Text("组合标签搜索".tl),
-        onTap: () => openNhentaiTagSearch(App.globalContext!),
+        onTap: () => openNhentaiTagSearch(context),
       ),
     ];
   }

@@ -102,6 +102,8 @@ class NhentaiTagPresets {
   static String applyDefaultExcludes(String keyword) {
     var defaults = defaultExcludes;
     if (defaults.terms.isEmpty) return keyword;
+    // A bare gallery ID is a lookup, not a tag search.
+    if (RegExp(r'^\s*\d+\s*$').hasMatch(keyword)) return keyword;
     var missing = NhentaiTagQuery.parse(keyword).missingTermsFrom(defaults);
     if (missing.isEmpty) return keyword;
     return [

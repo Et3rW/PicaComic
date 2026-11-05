@@ -241,7 +241,7 @@ class _SearchResultPageState extends State<_SearchResultPage> {
         child: _SearchPageComicList(
           keyword: keyword,
           sourceKey: sourceKey,
-          key: Key(keyword + options.toString() + sourceKey),
+          key: Key('$keyword$options$sourceKey#$reloadCount'),
           header: SliverPersistentHeader(
             pinned: _showFab && SmoothScrollProvider.isMouseScroll,
             floating: !SmoothScrollProvider.isMouseScroll,
@@ -262,10 +262,17 @@ class _SearchResultPageState extends State<_SearchResultPage> {
   double get headerHeight =>
       isNhentai ? 60 + NhentaiQueryChipsBar.height : 60;
 
+  /// Bumped to reload the same keyword, e.g. after default exclusions
+  /// were changed in the tag search page.
+  int reloadCount = 0;
+
   void setKeyword(String s) {
     suggestionsController.suggestions.clear();
     suggestionsController.remove();
-    if (s == keyword) return;
+    if (s == keyword) {
+      setState(() => reloadCount++);
+      return;
+    }
     controller.text = s;
     setState(() {
       keyword = s;

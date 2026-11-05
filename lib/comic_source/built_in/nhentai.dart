@@ -62,11 +62,18 @@ final nhentai = ComicSource.named(
         return NhentaiNetwork().searchQuery(
             NhentaiTagPresets.applyDefaultExcludes(keyword), page, sort);
       }
+      String? categoryQuery;
       if (NhentaiTagPresets.defaultExcludes.terms.isNotEmpty) {
+        try {
+          categoryQuery = nhentaiCategoryQuery("/$type/$name");
+        } on FormatException {
+          // Not a namespace route; keep loading it as before.
+        }
+      }
+      if (categoryQuery != null) {
         // Category routes cannot exclude tags; search the same namespace.
         return NhentaiNetwork().searchQuery(
-          NhentaiTagPresets.applyDefaultExcludes(
-              nhentaiCategoryQuery("/$type/$name")),
+          NhentaiTagPresets.applyDefaultExcludes(categoryQuery),
           page,
           sort,
         );

@@ -85,6 +85,12 @@ void main() {
     });
   });
 
+  test('non-namespace category keeps its route even with defaults', () async {
+    await setDefaults();
+    await nhentai.categoryComicsData!.load('x', '/search/x', [''], 1);
+    expect(requests.single.path, '/search/x/');
+  });
+
   test('recent category keeps its route without defaults', () async {
     await nhentai.categoryComicsData!
         .load('full-color', '/tag/full-color', [''], 3);
