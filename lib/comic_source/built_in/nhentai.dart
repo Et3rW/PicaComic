@@ -4,6 +4,8 @@ import 'package:pica_comic/comic_source/comic_source.dart';
 import 'package:pica_comic/network/nhentai_network/login.dart';
 import 'package:pica_comic/network/nhentai_network/login_flow.dart';
 import 'package:pica_comic/network/nhentai_network/nhentai_main_network.dart';
+import 'package:pica_comic/network/nhentai_network/page_parser.dart';
+import 'package:pica_comic/network/nhentai_network/tag_presets.dart';
 import 'package:pica_comic/network/nhentai_network/tags.dart';
 import 'package:flutter/material.dart';
 import 'package:pica_comic/components/components.dart';
@@ -51,16 +53,25 @@ final nhentai = ComicSource.named(
   categoryComicsData: CategoryComicsData.named(
     load: (category, param, options, page) async {
       var [_, type, name] = param!.split('/');
+      var sort = NhentaiSort.fromValue(options[0]);
       var lang = int.tryParse(appdata.settings[69]) ?? 0;
       if (lang != 0) {
-        return NhentaiNetwork().search(
-          "$type:$name language:${["chinese", "english", "japanese"][lang-1]}",
+        var keyword =
+            "$type:$name language:${["chinese", "english", "japanese"][lang-1]}";
+        NhentaiNetwork().addSearchHistory(keyword);
+        return NhentaiNetwork().searchQuery(
+            NhentaiTagPresets.applyDefaultExcludes(keyword), page, sort);
+      }
+      if (NhentaiTagPresets.defaultExcludes.terms.isNotEmpty) {
+        // Category routes cannot exclude tags; search the same namespace.
+        return NhentaiNetwork().searchQuery(
+          NhentaiTagPresets.applyDefaultExcludes(
+              nhentaiCategoryQuery("/$type/$name")),
           page,
-          NhentaiSort.fromValue(options[0]),
+          sort,
         );
       }
-      return NhentaiNetwork().getCategoryComics(
-          "/$type/$name", page, NhentaiSort.fromValue(options[0]));
+      return NhentaiNetwork().getCategoryComics("/$type/$name", page, sort);
     },
     options: [
       CategoryComicsOptions.named(
@@ -141,8 +152,12 @@ final nhentai = ComicSource.named(
   idMatcher: RegExp(r"^(\d+|nh\d+|nhentai\d+)$"),
   searchPageData: SearchPageData.named(
     loadPage: (keyword, page, options) {
-      return NhentaiNetwork()
-          .search(keyword, page, NhentaiSort.fromValue(options[0]));
+      NhentaiNetwork().addSearchHistory(keyword);
+      return NhentaiNetwork().searchQuery(
+        NhentaiTagPresets.applyDefaultExcludes(keyword),
+        page,
+        NhentaiSort.fromValue(options[0]),
+      );
     },
     enableLanguageFilter: true,
     enableTagsSuggestions: true,

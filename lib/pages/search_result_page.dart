@@ -9,6 +9,7 @@ import 'package:pica_comic/foundation/app.dart';
 import 'package:pica_comic/foundation/pair.dart';
 import 'package:pica_comic/network/base_comic.dart';
 import 'package:pica_comic/network/res.dart';
+import 'package:pica_comic/pages/nhentai/tag_search_page.dart';
 import 'package:pica_comic/tools/extensions.dart';
 import 'package:pica_comic/tools/tags_translation.dart';
 import 'package:pica_comic/tools/translations.dart';
@@ -194,6 +195,15 @@ class _SearchResultPageState extends State<_SearchResultPage> {
             icon: const Icon(Icons.tune),
             onPressed: showSearchOptions,
           ),
+          if (isNhentai) ...[
+            const SizedBox(
+              width: 4,
+            ),
+            Button.icon(
+              icon: const Icon(Icons.local_offer_outlined),
+              onPressed: openTagSearch,
+            ),
+          ],
         ],
       );
     }
@@ -236,26 +246,63 @@ class _SearchResultPageState extends State<_SearchResultPage> {
             pinned: _showFab && SmoothScrollProvider.isMouseScroll,
             floating: !SmoothScrollProvider.isMouseScroll,
             delegate: _SliverAppBarDelegate(
-              minHeight: 60,
-              maxHeight: 60,
-              child: FloatingSearchBar(
-                onSearch: (s) {
-                  suggestionsController.suggestions.clear();
-                  suggestionsController.remove();
-                  if (s == keyword) return;
-                  setState(() {
-                    keyword = s;
-                  });
-                },
-                controller: controller,
-                onChanged: onChanged,
-                trailing: trailing,
-              ),
+              minHeight: headerHeight,
+              maxHeight: headerHeight,
+              child: buildHeader(trailing),
             ),
           ),
           options: options,
         ),
       ),
+    );
+  }
+
+  bool get isNhentai => sourceKey == 'nhentai';
+
+  double get headerHeight =>
+      isNhentai ? 60 + NhentaiQueryChipsBar.height : 60;
+
+  void setKeyword(String s) {
+    suggestionsController.suggestions.clear();
+    suggestionsController.remove();
+    if (s == keyword) return;
+    controller.text = s;
+    setState(() {
+      keyword = s;
+    });
+  }
+
+  Widget buildHeader(Widget trailing) {
+    Widget searchBar = FloatingSearchBar(
+      onSearch: (s) {
+        suggestionsController.suggestions.clear();
+        suggestionsController.remove();
+        if (s == keyword) return;
+        setState(() {
+          keyword = s;
+        });
+      },
+      controller: controller,
+      onChanged: onChanged,
+      trailing: trailing,
+    );
+    if (!isNhentai) return searchBar;
+    return Material(
+      color: context.colorScheme.surface,
+      child: Column(
+        children: [
+          SizedBox(height: 60, child: searchBar),
+          NhentaiQueryChipsBar(keyword: keyword, onChanged: setKeyword),
+        ],
+      ),
+    );
+  }
+
+  void openTagSearch() {
+    openNhentaiTagSearch(
+      context,
+      initialQuery: keyword,
+      onSearch: setKeyword,
     );
   }
 
@@ -279,12 +326,19 @@ class _SearchResultPageState extends State<_SearchResultPage> {
           value: 1,
           child: Text("搜索选项".tl),
         ),
+        if (isNhentai)
+          PopupMenuItem(
+            value: 2,
+            child: Text("组合标签搜索".tl),
+          ),
       ],
     ).then((value) {
       if (value == 0) {
         changeSource();
       } else if (value == 1) {
         showSearchOptions();
+      } else if (value == 2) {
+        openTagSearch();
       }
     });
   }
