@@ -39,7 +39,7 @@ jobs:
           test/jm_login_flow_test.dart
           test/account_login_page_test.dart
           test/nhentai_tag_query_test.dart
-          test/nhentai_tag_search_page_test.dart
+          test/nhentai_tag_stack_page_test.dart
           test/nhentai_default_excludes_test.dart
       - name: Build release-mode test APK
         run: flutter build apk --release --no-pub --target-platform android-arm64,android-x64
