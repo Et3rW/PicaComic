@@ -12,9 +12,6 @@ import 'package:pica_comic/tools/extensions.dart';
 import 'package:pica_comic/tools/tags_translation.dart';
 import 'package:pica_comic/tools/translations.dart';
 import 'package:sliver_tools/sliver_tools.dart';
-import 'package:pica_comic/network/nhentai_network/tag_presets.dart';
-import 'package:pica_comic/network/nhentai_network/tag_query.dart';
-import 'package:pica_comic/pages/nhentai/tag_search_page.dart';
 
 typedef FilterChip = FilterChipFixedWidth;
 
@@ -192,20 +189,6 @@ class PreSearchPage extends StatelessWidget {
         options: searchController.options,
       ),
     );
-  }
-
-  void openTagSearch(BuildContext context) {
-    // Carry over what is already typed into the combination being built.
-    var typed = NhentaiTagQuery.parse(controller.text);
-    var draft = NhentaiTagDraft.value;
-    for (var term in typed.terms) {
-      draft = draft.add(term);
-    }
-    if (typed.text.isNotEmpty) {
-      draft = draft.copyWith(text: typed.text);
-    }
-    NhentaiTagDraft.value = draft;
-    openNhentaiTagSearch(context, onSearch: (q) => search(q, 'nhentai'));
   }
 
   void findSuggestions() {
@@ -643,15 +626,6 @@ class PreSearchPage extends StatelessWidget {
         }
         if (logic.searchPageData.enableLanguageFilter) {
           children.add(buildLangSelector());
-        }
-        if (logic.target == 'nhentai') {
-          children.add(ListTile(
-            leading: const Icon(Icons.local_offer_outlined),
-            title: Text("组合标签搜索".tl),
-            subtitle: Text("多个标签同时满足, 可以排除标签".tl),
-            trailing: const Icon(Icons.arrow_right),
-            onTap: () => openTagSearch(context),
-          ).paddingTop(8));
         }
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,

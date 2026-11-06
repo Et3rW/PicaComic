@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:pica_comic/comic_source/comic_source.dart';
 import 'package:pica_comic/components/components.dart';
 import 'package:pica_comic/network/nhentai_network/nhentai_main_network.dart';
-import 'package:pica_comic/network/nhentai_network/tag_presets.dart';
+import 'package:pica_comic/network/nhentai_network/tag_settings.dart';
 import 'package:pica_comic/network/nhentai_network/tag_query.dart';
-import 'package:pica_comic/pages/nhentai/tag_search_page.dart';
+import 'package:pica_comic/pages/nhentai/tag_stack_page.dart';
 import 'package:pica_comic/network/res.dart';
 import 'package:pica_comic/pages/category_comics_page.dart';
 import 'package:pica_comic/pages/comic_page.dart';
@@ -189,6 +189,15 @@ class NhentaiComicPage extends BaseComicPage<NhentaiComic> {
 
   @override
   void tapOnTag(String tag, String key) {
+    var namespace = nhentaiNamespaceOfField(key);
+    if (namespace != null && NhentaiTagSettings.stackEnabled) {
+      openNhentaiTagStack(
+        context,
+        NhentaiTagStackContext.termsForComic(id),
+        NhentaiTagTerm(namespace, tag),
+      );
+      return;
+    }
     if (tag.contains(" | ")) {
       tag = tag.replaceAll(' | ', '-');
     }
@@ -222,38 +231,6 @@ class NhentaiComicPage extends BaseComicPage<NhentaiComic> {
         ),
       );
     }
-  }
-
-  @override
-  List<PopupMenuEntry<dynamic>> buildTagMenuItems(String tag, String key) {
-    var namespace = nhentaiNamespaceOfField(key);
-    if (namespace == null) return const [];
-    void addToDraft(bool exclude) {
-      NhentaiTagDraft.add(NhentaiTagTerm(namespace, tag, exclude: exclude));
-      var count = NhentaiTagDraft.value.terms.length;
-      showToast(
-        message: "已加入组合 (@n)".tlParams({"n": "$count"}),
-        trailing: TextButton(
-          onPressed: () => openNhentaiTagSearch(context),
-          child: Text("去搜索".tl),
-        ),
-      );
-    }
-
-    return [
-      PopupMenuItem(
-        child: Text("加入组合搜索".tl),
-        onTap: () => addToDraft(false),
-      ),
-      PopupMenuItem(
-        child: Text("在组合中排除".tl),
-        onTap: () => addToDraft(true),
-      ),
-      PopupMenuItem(
-        child: Text("组合标签搜索".tl),
-        onTap: () => openNhentaiTagSearch(context),
-      ),
-    ];
   }
 
   @override

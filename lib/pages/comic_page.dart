@@ -671,10 +671,6 @@ abstract class BaseComicPage<T extends Object> extends StatelessWidget {
   /// callback when user tap on a tag
   void tapOnTag(String tag, String key);
 
-  /// Extra entries for the long-press menu of a tag.
-  List<PopupMenuEntry<dynamic>> buildTagMenuItems(String tag, String key) =>
-      const [];
-
   void read(History? history);
 
   void download();
@@ -1104,8 +1100,7 @@ abstract class BaseComicPage<T extends Object> extends StatelessWidget {
               appdata.favoriteTags.add(res);
               appdata.writeHistory();
             },
-          ),
-        if (!title) ...buildTagMenuItems(text, key),
+          )
       ];
     }
 

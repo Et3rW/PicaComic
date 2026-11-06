@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pica_comic/network/nhentai_network/tag_presets.dart';
+import 'package:pica_comic/network/nhentai_network/tag_settings.dart';
+import 'package:pica_comic/network/nhentai_network/tag_stack.dart';
 import 'package:pica_comic/network/nhentai_network/tag_query.dart';
 
 void main() {
@@ -159,82 +160,143 @@ void main() {
     expect(parseNhentaiTagSuggestions(null), isEmpty);
   });
 
-  group('NhentaiTagPresets', () {
+  group('NhentaiTagSettings', () {
     late Map<String, dynamic> data;
     late int saves;
 
     setUp(() {
       data = {};
       saves = 0;
-      NhentaiTagPresets.dataProvider = () => data;
-      NhentaiTagPresets.saver = () async => saves++;
-    });
-
-    test('saves, replaces and removes presets by name', () async {
-      await NhentaiTagPresets.savePreset(
-          const NhentaiTagPreset('a', 'tag:"x"'));
-      await NhentaiTagPresets.savePreset(
-          const NhentaiTagPreset('b', 'tag:"y"'));
-      await NhentaiTagPresets.savePreset(
-          const NhentaiTagPreset('a', 'tag:"z"'));
-      expect(NhentaiTagPresets.presets.map((p) => '${p.name}=${p.query}'),
-          ['b=tag:"y"', 'a=tag:"z"']);
-      await NhentaiTagPresets.removePreset('b');
-      expect(NhentaiTagPresets.presets.map((p) => p.name), ['a']);
-      expect(saves, 4);
-    });
-
-    test('ignores corrupted preset data', () {
-      data['multiTagPresets'] = [
-        {'name': 'ok', 'query': 'tag:"x"'},
-        {'name': '', 'query': 'tag:"x"'},
-        {'name': 1},
-        'bad',
-      ];
-      expect(NhentaiTagPresets.presets.map((p) => p.name), ['ok']);
-      data['multiTagPresets'] = 'bad';
-      expect(NhentaiTagPresets.presets, isEmpty);
+      NhentaiTagSettings.dataProvider = () => data;
+      NhentaiTagSettings.saver = () async => saves++;
     });
 
     test('default excludes are always exclusions', () async {
-      await NhentaiTagPresets.setDefaultExcludes(const [
+      await NhentaiTagSettings.setDefaultExcludes(const [
         NhentaiTagTerm('tag', 'yaoi'),
         NhentaiTagTerm('tag', 'guro', exclude: true),
       ]);
-      expect(NhentaiTagPresets.defaultExcludes.toQuery(),
+      expect(NhentaiTagSettings.defaultExcludes.toQuery(),
           '-tag:"yaoi" -tag:"guro"');
-      await NhentaiTagPresets.setDefaultExcludes(const []);
+      await NhentaiTagSettings.setDefaultExcludes(const []);
       expect(data.containsKey('multiTagDefaultExcludes'), isFalse);
     });
 
     test('applyDefaultExcludes appends only unmentioned tags', () async {
-      expect(NhentaiTagPresets.applyDefaultExcludes('tag:"a"'), 'tag:"a"');
-      await NhentaiTagPresets.setDefaultExcludes(const [
+      expect(NhentaiTagSettings.applyDefaultExcludes('tag:"a"'), 'tag:"a"');
+      await NhentaiTagSettings.setDefaultExcludes(const [
         NhentaiTagTerm('tag', 'yaoi'),
         NhentaiTagTerm('tag', 'guro'),
       ]);
-      expect(NhentaiTagPresets.applyDefaultExcludes('tag:"a"'),
+      expect(NhentaiTagSettings.applyDefaultExcludes('tag:"a"'),
           'tag:"a" -tag:"yaoi" -tag:"guro"');
       // Explicitly including a default-excluded tag overrides the default.
-      expect(NhentaiTagPresets.applyDefaultExcludes('tag:"yaoi" foo'),
+      expect(NhentaiTagSettings.applyDefaultExcludes('tag:"yaoi" foo'),
           'tag:"yaoi" foo -tag:"guro"');
-      expect(NhentaiTagPresets.applyDefaultExcludes(''),
+      expect(NhentaiTagSettings.applyDefaultExcludes(''),
           '-tag:"yaoi" -tag:"guro"');
-      expect(NhentaiTagPresets.applyDefaultExcludes(' 177013 '), ' 177013 ');
+      expect(NhentaiTagSettings.applyDefaultExcludes(' 177013 '), ' 177013 ');
       expect(
-          NhentaiTagPresets.applyDefaultExcludes(
+          NhentaiTagSettings.applyDefaultExcludes(
               '-tag:"yaoi" -tag:"guro"'),
           '-tag:"yaoi" -tag:"guro"');
     });
+
+    test('tag stacking is on by default and can be turned off', () async {
+      expect(NhentaiTagSettings.stackEnabled, isTrue);
+      await NhentaiTagSettings.setStackEnabled(false);
+      expect(NhentaiTagSettings.stackEnabled, isFalse);
+      expect(saves, 1);
+      await NhentaiTagSettings.setStackEnabled(true);
+      expect(NhentaiTagSettings.stackEnabled, isTrue);
+    });
   });
 
-  test('NhentaiTagDraft accumulates terms', () {
-    NhentaiTagDraft.clear();
-    NhentaiTagDraft.add(const NhentaiTagTerm('tag', 'a'));
-    NhentaiTagDraft.add(const NhentaiTagTerm('tag', 'a', exclude: true));
-    NhentaiTagDraft.add(const NhentaiTagTerm('artist', 'b'));
-    expect(NhentaiTagDraft.value.toQuery(), '-tag:"a" artist:"b"');
-    NhentaiTagDraft.clear();
-    expect(NhentaiTagDraft.value.isEmpty, isTrue);
+  group('nhentaiStackAdd', () {
+    const chinese = NhentaiTagTerm('language', 'chinese');
+    const glasses = NhentaiTagTerm('tag', 'glasses');
+
+    String q(NhentaiStackResult r) =>
+        NhentaiTagQuery(terms: r.terms).toQuery();
+
+    test('stacks a new tag after the existing ones', () {
+      final r = nhentaiStackAdd(const [chinese], glasses);
+      expect(r.outcome, NhentaiStackOutcome.added);
+      expect(q(r), 'language:chinese tag:"glasses"');
+    });
+
+    test('starts a new stack without context', () {
+      final r = nhentaiStackAdd(const [], glasses);
+      expect(r.outcome, NhentaiStackOutcome.added);
+      expect(r.terms, const [glasses]);
+    });
+
+    test('reports duplicates without changing the stack', () {
+      final r = nhentaiStackAdd(const [chinese, glasses],
+          const NhentaiTagTerm('tag', 'Glasses'));
+      expect(r.outcome, NhentaiStackOutcome.duplicate);
+      expect(r.terms, const [chinese, glasses]);
+    });
+
+    test('a new language replaces the old one, flags stack', () {
+      var r = nhentaiStackAdd(const [chinese, glasses],
+          const NhentaiTagTerm('language', 'japanese'));
+      expect(q(r), 'tag:"glasses" language:japanese');
+      r = nhentaiStackAdd(r.terms, const NhentaiTagTerm('language', 'translated'));
+      expect(q(r), 'tag:"glasses" language:japanese language:translated');
+      r = nhentaiStackAdd(r.terms, const NhentaiTagTerm('language', 'english'));
+      expect(q(r), 'tag:"glasses" language:translated language:english');
+    });
+
+    test('stops at the limit', () {
+      var terms = <NhentaiTagTerm>[];
+      for (var i = 0; i < nhentaiTagStackLimit; i++) {
+        final r = nhentaiStackAdd(terms, NhentaiTagTerm('tag', 't$i'));
+        expect(r.outcome, NhentaiStackOutcome.added);
+        terms = r.terms;
+      }
+      final r = nhentaiStackAdd(terms, const NhentaiTagTerm('tag', 'more'));
+      expect(r.outcome, NhentaiStackOutcome.limit);
+      expect(r.terms, terms);
+      // Replacing the language does not grow the stack.
+      final withLang = nhentaiStackAdd(
+          [...terms.take(nhentaiTagStackLimit - 1), chinese],
+          const NhentaiTagTerm('language', 'english'));
+      expect(withLang.outcome, NhentaiStackOutcome.added);
+    });
+  });
+
+  group('stack params', () {
+    test('one tag keeps the classic category route', () {
+      expect(nhentaiStackParam(const [NhentaiTagTerm('tag', 'Big  Breasts')]),
+          '/tag/big-breasts');
+      expect(nhentaiStackParam(const [NhentaiTagTerm('language', 'chinese')]),
+          '/language/chinese');
+    });
+
+    test('several tags use an encoded combo query and round trip', () {
+      const terms = [
+        NhentaiTagTerm('language', 'chinese'),
+        NhentaiTagTerm('tag', 'big breasts'),
+        NhentaiTagTerm('artist', 'a/b'),
+      ];
+      final param = nhentaiStackParam(terms);
+      expect(param.split('/'), hasLength(3));
+      expect(param, startsWith('/combo/'));
+      expect(nhentaiTermsFromParam(param), terms);
+    });
+
+    test('parses classic routes and rejects others', () {
+      expect(nhentaiTermsFromParam('/tag/full-color'),
+          const [NhentaiTagTerm('tag', 'full color')]);
+      expect(nhentaiTermsFromParam('/language/chinese'),
+          const [NhentaiTagTerm('language', 'chinese')]);
+      expect(nhentaiTermsFromParam(null), isNull);
+      expect(nhentaiTermsFromParam('/search/x'), isNull);
+      expect(nhentaiTermsFromParam('/tag/'), isNull);
+      expect(nhentaiTermsFromParam('tag/x'), isNull);
+      expect(nhentaiTermsFromParam('/combo/%E0%A4%A'), isNull);
+      expect(nhentaiTermsFromParam('/combo/foo'), isNull);
+    });
   });
 }

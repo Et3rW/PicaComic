@@ -44,7 +44,37 @@ class _NhSettingsState extends State<NhSettings> {
           title: Text("${"删除".tl} cookie"),
           onTap: () => deleteAllCookie(),
           trailing: const Icon(Icons.arrow_right),
-        )
+        ),
+        ValueListenableBuilder(
+          valueListenable: NhentaiTagSettings.changes,
+          builder: (context, _, __) => ListTile(
+            leading: const Icon(Icons.layers_outlined),
+            title: Text("点标签时叠加到当前标签".tl),
+            subtitle: Text("在分类或标签页里打开漫画, 再点标签会和页面上的标签一起搜索, 最多 @n 个"
+                .tlParams({"n": "$nhentaiTagStackLimit"})),
+            trailing: Switch(
+              value: NhentaiTagSettings.stackEnabled,
+              onChanged: (v) => NhentaiTagSettings.setStackEnabled(v),
+            ),
+            onTap: () => NhentaiTagSettings.setStackEnabled(
+                !NhentaiTagSettings.stackEnabled),
+          ),
+        ),
+        ValueListenableBuilder(
+          valueListenable: NhentaiTagSettings.changes,
+          builder: (context, _, __) {
+            var count = NhentaiTagSettings.defaultExcludes.terms.length;
+            return ListTile(
+              leading: const Icon(Icons.block),
+              title: Text("默认排除的标签".tl),
+              subtitle: Text(count == 0
+                  ? "未设置".tl
+                  : "已排除 @n 个标签".tlParams({"n": "$count"})),
+              trailing: const Icon(Icons.arrow_right),
+              onTap: () => context.to(() => const NhentaiDefaultExcludesPage()),
+            );
+          },
+        ),
       ],
     );
   }

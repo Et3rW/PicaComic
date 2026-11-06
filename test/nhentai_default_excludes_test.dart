@@ -4,8 +4,9 @@ import 'package:pica_comic/base.dart';
 import 'package:pica_comic/comic_source/built_in/nhentai.dart';
 import 'package:pica_comic/network/cookie_jar.dart';
 import 'package:pica_comic/network/nhentai_network/nhentai_main_network.dart';
-import 'package:pica_comic/network/nhentai_network/tag_presets.dart';
+import 'package:pica_comic/network/nhentai_network/tag_settings.dart';
 import 'package:pica_comic/network/nhentai_network/tag_query.dart';
+import 'package:pica_comic/network/nhentai_network/tag_stack.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -26,8 +27,8 @@ void main() {
     language = appdata.settings[69];
     appdata.settings[69] = '0';
     data = {};
-    NhentaiTagPresets.dataProvider = () => data;
-    NhentaiTagPresets.saver = () async {};
+    NhentaiTagSettings.dataProvider = () => data;
+    NhentaiTagSettings.saver = () async {};
     network.dio = Dio()
       ..interceptors.add(InterceptorsWrapper(onRequest: (options, handler) {
         requests.add(options.uri);
@@ -50,7 +51,7 @@ void main() {
     appdata.settings[69] = language;
   });
 
-  Future<void> setDefaults() => NhentaiTagPresets.setDefaultExcludes(const [
+  Future<void> setDefaults() => NhentaiTagSettings.setDefaultExcludes(const [
         NhentaiTagTerm('tag', 'yaoi'),
         NhentaiTagTerm('tag', 'guro'),
       ]);
@@ -83,6 +84,46 @@ void main() {
       'q': 'tag:"full color" -tag:"yaoi" -tag:"guro"',
       'page': '3',
     });
+  });
+
+  test('stacked tags search the combined query without history', () async {
+    await setDefaults();
+    final param = nhentaiStackParam(const [
+      NhentaiTagTerm('language', 'chinese'),
+      NhentaiTagTerm('tag', 'glasses'),
+    ]);
+    await nhentai.categoryComicsData!
+        .load('combo', param, ['&sort=popular'], 2);
+    expect(requests.single.path, '/search/');
+    expect(requests.single.queryParameters, {
+      'q': 'language:chinese tag:"glasses" -tag:"yaoi" -tag:"guro"',
+      'page': '2',
+      'sort': 'popular',
+    });
+    expect(appdata.searchHistory, history);
+  });
+
+  test('stacked tags get the global language unless they have one', () async {
+    appdata.settings[69] = '3';
+    await nhentai.categoryComicsData!.load(
+        'combo',
+        nhentaiStackParam(const [
+          NhentaiTagTerm('tag', 'a'),
+          NhentaiTagTerm('tag', 'b'),
+        ]),
+        [''],
+        1);
+    expect(requests.last.queryParameters['q'],
+        'tag:"a" tag:"b" language:japanese');
+    await nhentai.categoryComicsData!.load(
+        'combo',
+        nhentaiStackParam(const [
+          NhentaiTagTerm('language', 'english'),
+          NhentaiTagTerm('tag', 'b'),
+        ]),
+        [''],
+        1);
+    expect(requests.last.queryParameters['q'], 'language:english tag:"b"');
   });
 
   test('non-namespace category keeps its route even with defaults', () async {

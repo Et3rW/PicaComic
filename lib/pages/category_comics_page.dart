@@ -4,6 +4,10 @@ import 'package:pica_comic/components/components.dart';
 import "package:pica_comic/foundation/app.dart";
 import 'package:pica_comic/network/base_comic.dart';
 import "package:pica_comic/network/res.dart";
+import "package:pica_comic/network/nhentai_network/tag_query.dart";
+import "package:pica_comic/network/nhentai_network/tag_settings.dart";
+import "package:pica_comic/network/nhentai_network/tag_stack.dart";
+import "package:pica_comic/pages/nhentai/tag_stack_page.dart";
 import "package:pica_comic/tools/translations.dart";
 
 class CategoryComicsPage extends StatefulWidget {
@@ -48,14 +52,26 @@ class _CategoryComicsPageState extends State<CategoryComicsPage> {
     throw "${widget.categoryKey} Not found";
   }
 
+  /// nhentai tag pages show their tags as chips so comics opened from here
+  /// can stack more tags onto them.
+  List<NhentaiTagTerm>? nhentaiTerms;
+
   @override
   void initState() {
-    findData();
+    if (widget.categoryKey == 'nhentai' && NhentaiTagSettings.stackEnabled) {
+      nhentaiTerms = nhentaiTermsFromParam(widget.param);
+    }
+    if (nhentaiTerms == null) {
+      findData();
+    }
     super.initState();
   }
 
   @override
   Widget build(BuildContext context) {
+    if (nhentaiTerms != null) {
+      return NhentaiTagStackPage(terms: nhentaiTerms!, category: widget.category);
+    }
     return Scaffold(
       appBar: Appbar(
         title: Text(widget.category),
