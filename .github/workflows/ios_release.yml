@@ -35,8 +35,8 @@ jobs:
           app = pathlib.Path('build/ios/iphoneos/Runner.app')
           with (app / 'Info.plist').open('rb') as f:
               info = plistlib.load(f)
-          assert info['CFBundleShortVersionString'] == '5.1.5', info
-          assert info['CFBundleVersion'] == '5015', info
+          assert info['CFBundleShortVersionString'] == '5.1.6', info
+          assert info['CFBundleVersion'] == '5016', info
           assert info['CFBundleIdentifier'] == 'com.github.pacalini.picaComic', info
           assert info['CFBundleSupportedPlatforms'] == ['iPhoneOS'], info
           executable = app / info['CFBundleExecutable']
@@ -47,13 +47,13 @@ jobs:
           mkdir -p dist/Payload
           ditto build/ios/iphoneos/Runner.app dist/Payload/Runner.app
           cd dist
-          ditto -c -k --keepParent Payload PicaComic-5.1.5-unsigned.ipa
-          shasum -a 256 PicaComic-5.1.5-unsigned.ipa > SHA256SUMS-ios.txt
+          ditto -c -k --keepParent Payload PicaComic-5.1.6-unsigned.ipa
+          shasum -a 256 PicaComic-5.1.6-unsigned.ipa > SHA256SUMS-ios.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: PicaComic-5.1.5-ios
+          name: PicaComic-5.1.6-ios
           path: |
-            dist/PicaComic-5.1.5-unsigned.ipa
+            dist/PicaComic-5.1.6-unsigned.ipa
             dist/SHA256SUMS-ios.txt
           if-no-files-found: error
           retention-days: 30
