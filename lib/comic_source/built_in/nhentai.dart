@@ -4,6 +4,9 @@ import 'package:pica_comic/comic_source/comic_source.dart';
 import 'package:pica_comic/network/nhentai_network/login.dart';
 import 'package:pica_comic/network/nhentai_network/login_flow.dart';
 import 'package:pica_comic/network/nhentai_network/nhentai_main_network.dart';
+import 'package:pica_comic/network/nhentai_network/page_parser.dart';
+import 'package:pica_comic/network/nhentai_network/tag_settings.dart';
+import 'package:pica_comic/pages/nhentai/tag_stack_page.dart';
 import 'package:pica_comic/network/nhentai_network/tags.dart';
 import 'package:flutter/material.dart';
 import 'package:pica_comic/components/components.dart';
@@ -51,16 +54,41 @@ final nhentai = ComicSource.named(
   categoryComicsData: CategoryComicsData.named(
     load: (category, param, options, page) async {
       var [_, type, name] = param!.split('/');
+      var sort = NhentaiSort.fromValue(options[0]);
       var lang = int.tryParse(appdata.settings[69]) ?? 0;
+      if (type == 'combo') {
+        // Several stacked tags, see nhentaiStackParam.
+        var query = Uri.decodeComponent(name);
+        if (lang != 0 && !RegExp(r'(^|\s)language:').hasMatch(query)) {
+          query += " language:${["chinese", "english", "japanese"][lang-1]}";
+        }
+        return NhentaiNetwork().searchQuery(
+            NhentaiTagSettings.applyDefaultExcludes(query), page, sort);
+      }
       if (lang != 0) {
-        return NhentaiNetwork().search(
-          "$type:$name language:${["chinese", "english", "japanese"][lang-1]}",
+        var keyword =
+            "$type:$name language:${["chinese", "english", "japanese"][lang-1]}";
+        NhentaiNetwork().addSearchHistory(keyword);
+        return NhentaiNetwork().searchQuery(
+            NhentaiTagSettings.applyDefaultExcludes(keyword), page, sort);
+      }
+      String? categoryQuery;
+      if (NhentaiTagSettings.defaultExcludes.terms.isNotEmpty) {
+        try {
+          categoryQuery = nhentaiCategoryQuery("/$type/$name");
+        } on FormatException {
+          // Not a namespace route; keep loading it as before.
+        }
+      }
+      if (categoryQuery != null) {
+        // Category routes cannot exclude tags; search the same namespace.
+        return NhentaiNetwork().searchQuery(
+          NhentaiTagSettings.applyDefaultExcludes(categoryQuery),
           page,
-          NhentaiSort.fromValue(options[0]),
+          sort,
         );
       }
-      return NhentaiNetwork().getCategoryComics(
-          "/$type/$name", page, NhentaiSort.fromValue(options[0]));
+      return NhentaiNetwork().getCategoryComics("/$type/$name", page, sort);
     },
     options: [
       CategoryComicsOptions.named(
@@ -141,8 +169,12 @@ final nhentai = ComicSource.named(
   idMatcher: RegExp(r"^(\d+|nh\d+|nhentai\d+)$"),
   searchPageData: SearchPageData.named(
     loadPage: (keyword, page, options) {
-      return NhentaiNetwork()
-          .search(keyword, page, NhentaiSort.fromValue(options[0]));
+      NhentaiNetwork().addSearchHistory(keyword);
+      return NhentaiNetwork().searchQuery(
+        NhentaiTagSettings.applyDefaultExcludes(keyword),
+        page,
+        NhentaiSort.fromValue(options[0]),
+      );
     },
     enableLanguageFilter: true,
     enableTagsSuggestions: true,
@@ -191,6 +223,7 @@ class _NhentaiComicTile extends ComicTile {
 
   @override
   void onTap_() {
+    NhentaiTagStackContext.onComicOpened(comic.id);
     App.mainNavigatorKey!.currentContext!.to(
       () => ComicPage(
         sourceKey: 'nhentai',

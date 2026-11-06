@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:pica_comic/comic_source/comic_source.dart';
 import 'package:pica_comic/components/components.dart';
 import 'package:pica_comic/network/nhentai_network/nhentai_main_network.dart';
+import 'package:pica_comic/network/nhentai_network/tag_settings.dart';
+import 'package:pica_comic/network/nhentai_network/tag_query.dart';
+import 'package:pica_comic/pages/nhentai/tag_stack_page.dart';
 import 'package:pica_comic/network/res.dart';
 import 'package:pica_comic/pages/category_comics_page.dart';
 import 'package:pica_comic/pages/comic_page.dart';
@@ -186,6 +189,15 @@ class NhentaiComicPage extends BaseComicPage<NhentaiComic> {
 
   @override
   void tapOnTag(String tag, String key) {
+    var namespace = nhentaiNamespaceOfField(key);
+    if (namespace != null && NhentaiTagSettings.stackEnabled) {
+      openNhentaiTagStack(
+        context,
+        NhentaiTagStackContext.termsForComic(id),
+        NhentaiTagTerm(namespace, tag),
+      );
+      return;
+    }
     if (tag.contains(" | ")) {
       tag = tag.replaceAll(' | ', '-');
     }
@@ -194,7 +206,7 @@ class NhentaiComicPage extends BaseComicPage<NhentaiComic> {
     }
     String? categoryParam = switch (key) {
       "Parodies" => "/parody/$tag",
-      "Character" => "/character/$tag",
+      "Character" || "Characters" => "/character/$tag",
       "Tags" => "/tag/$tag",
       "Artists" => "/artist/$tag",
       "Groups" => "/group/$tag",
