@@ -36,8 +36,8 @@ jobs:
           app = pathlib.Path('build/macos/Build/Products/Release/pica_comic.app')
           with (app / 'Contents/Info.plist').open('rb') as f:
               info = plistlib.load(f)
-          assert info['CFBundleShortVersionString'] == '5.1.6', info
-          assert info['CFBundleVersion'] == '5016', info
+          assert info['CFBundleShortVersionString'] == '5.1.7', info
+          assert info['CFBundleVersion'] == '5017', info
           assert info['CFBundleIdentifier'] == 'com.github.pacalini.picaComic', info
           assert info['LSMinimumSystemVersion'] == '12.4', info
           checked = set()
@@ -56,12 +56,12 @@ jobs:
           PY
           codesign --verify --deep --strict --verbose=2 build/macos/Build/Products/Release/pica_comic.app
           mkdir -p dist
-          ditto -c -k --keepParent build/macos/Build/Products/Release/pica_comic.app dist/PicaComic-5.1.6-macos-universal.zip
+          ditto -c -k --keepParent build/macos/Build/Products/Release/pica_comic.app dist/PicaComic-5.1.7-macos-universal.zip
           cd dist
-          shasum -a 256 PicaComic-5.1.6-macos-universal.zip > SHA256SUMS-macos.txt
+          shasum -a 256 PicaComic-5.1.7-macos-universal.zip > SHA256SUMS-macos.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: PicaComic-5.1.6-macos
+          name: PicaComic-5.1.7-macos
           path: dist/
           if-no-files-found: error
           retention-days: 30
