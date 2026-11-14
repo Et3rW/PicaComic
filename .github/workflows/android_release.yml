@@ -59,32 +59,33 @@ jobs:
           test/nhentai_tag_query_test.dart
           test/nhentai_tag_stack_page_test.dart
           test/nhentai_default_excludes_test.dart
+          test/cache_manager_test.dart
       - name: Build release APK
         run: flutter build apk --release --no-pub --target-platform android-arm64,android-x64
       - name: Verify and package APK
         run: |
           mkdir -p dist
-          cp build/app/outputs/flutter-apk/app-release.apk dist/PicaComic-5.1.6.apk
+          cp build/app/outputs/flutter-apk/app-release.apk dist/PicaComic-5.1.7.apk
           python3 - <<'PY'
           import os, pathlib, re, subprocess
           tools = pathlib.Path(os.environ['ANDROID_HOME']) / 'build-tools'
           versions = [p for p in tools.iterdir() if re.fullmatch(r'\d+\.\d+\.\d+', p.name)]
           sdk = max(versions, key=lambda p: tuple(map(int, p.name.split('.'))))
-          apk = 'dist/PicaComic-5.1.6.apk'
+          apk = 'dist/PicaComic-5.1.7.apk'
           signature = subprocess.check_output([str(sdk/'apksigner'), 'verify', '--verbose', '--print-certs', apk], text=True)
           print(signature, flush=True)
           expected = 'd7d2aa05487ac22f2b9ec2147d5629535ed76b50938a412707ab901161b8903b'
           digests = re.findall(r'^(?:Signer #\d+|V\d+(?:\.\d+)? Signer:) certificate SHA-256 digest: ([0-9a-fA-F:]+)\s*$', signature, re.MULTILINE)
           assert {digest.replace(':', '').lower() for digest in digests} == {expected}, 'Unexpected signing certificate'
           info = subprocess.check_output([str(sdk/'aapt'), 'dump', 'badging', apk], text=True)
-          assert "package: name='com.github.et3rw.pica_comic' versionCode='5016' versionName='5.1.6'" in info, 'Unexpected package/version'
+          assert "package: name='com.github.et3rw.pica_comic' versionCode='5017' versionName='5.1.7'" in info, 'Unexpected package/version'
           print(info.splitlines()[0])
           PY
           cd dist
-          sha256sum PicaComic-5.1.6.apk > SHA256SUMS-android.txt
+          sha256sum PicaComic-5.1.7.apk > SHA256SUMS-android.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: PicaComic-5.1.6-android
+          name: PicaComic-5.1.7-android
           path: dist/
           if-no-files-found: error
           retention-days: 30

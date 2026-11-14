@@ -445,6 +445,8 @@ extension ImageExt on ComicReadingPage {
       if (index >= logic.urls.length || logic.requestedLoadingItems[index]) {
         return;
       }
+      // Each page is preloaded once; it was requested again on every build.
+      logic.requestedLoadingItems[index] = true;
       precacheImage(createImageProvider(type, logic, index, target), context);
     }
     if (!ImageManager.haveTask) {
@@ -453,6 +455,7 @@ extension ImageExt on ComicReadingPage {
         if (index >= logic.urls.length || logic.requestedLoadingItems[index]) {
           return;
         }
+        logic.requestedLoadingItems[index] = true;
         precacheImage(createImageProvider(type, logic, index, target), context);
       }
     }
