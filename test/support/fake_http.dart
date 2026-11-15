@@ -23,14 +23,38 @@ class FakeResponse {
   final int status;
   final Map<String, List<String>> headers;
 
+  /// When set, the body is sent in these pieces instead of [bytes], with
+  /// [pause] before each one, like an image arriving over the network.
+  final List<List<int>>? chunks;
+  final Duration pause;
+
   FakeResponse(
     Object body, {
     this.status = 200,
     Map<String, String> headers = const {},
   })  : bytes = body is List<int> ? body : utf8.encode(body as String),
+        chunks = null,
+        pause = Duration.zero,
         headers = {
           for (final entry in headers.entries) entry.key: [entry.value],
         };
+
+  FakeResponse.chunked(
+    List<List<int>> this.chunks, {
+    this.status = 200,
+    this.pause = const Duration(milliseconds: 5),
+    Map<String, String> headers = const {},
+  })  : bytes = const [],
+        headers = {
+          for (final entry in headers.entries) entry.key: [entry.value],
+        };
+
+  Stream<Uint8List> _stream() async* {
+    for (final chunk in chunks!) {
+      await Future<void>.delayed(pause);
+      yield Uint8List.fromList(chunk);
+    }
+  }
 }
 
 /// Answers every request made through `logDio` / `CachedNetwork` from a table
@@ -44,8 +68,8 @@ class FakeHttp implements HttpClientAdapter {
 
   List<String> get urls => [for (final r in requests) r.uri.toString()];
 
-  /// Routes are tried in the order they were added. A [String] pattern matches
-  /// when the URL contains it.
+  /// The route added last wins, so a test can replace an earlier answer.
+  /// A [String] pattern matches when the URL contains it.
   void on(Pattern url, FakeHandler handler) => _routes.add((url, handler));
 
   void text(Pattern url, String body, {Map<String, String> headers = const {}}) =>
@@ -59,11 +83,15 @@ class FakeHttp implements HttpClientAdapter {
       Stream<Uint8List>? requestStream, Future<void>? cancelFuture) async {
     requests.add(options);
     final url = options.uri.toString();
-    for (final (pattern, handler) in _routes) {
+    for (final (pattern, handler) in _routes.reversed) {
       final matches =
           pattern is String ? url.contains(pattern) : pattern.allMatches(url).isNotEmpty;
       if (!matches) continue;
       final response = await handler(options);
+      if (response.chunks != null) {
+        return ResponseBody(response._stream(), response.status,
+            headers: response.headers);
+      }
       return ResponseBody.fromBytes(response.bytes, response.status,
           headers: response.headers);
     }

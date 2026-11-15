@@ -18,17 +18,17 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pica_comic/base.dart';
 import 'package:pica_comic/foundation/cache_manager.dart';
+import 'package:pica_comic/foundation/image_manager.dart';
 import 'package:pica_comic/network/app_dio.dart';
 import 'package:pica_comic/network/cookie_jar.dart';
 import 'package:pica_comic/network/eh_network/eh_main_network.dart';
 import 'package:pica_comic/network/hitomi_network/hitomi_main_network.dart';
-import 'package:pica_comic/network/hitomi_network/image.dart';
 import 'package:pica_comic/network/htmanga_network/htmanga_main_network.dart';
-import 'package:pica_comic/network/jm_network/headers.dart';
 import 'package:pica_comic/network/jm_network/jm_network.dart';
 import 'package:pica_comic/network/nhentai_network/nhentai_main_network.dart';
 import 'package:pica_comic/network/picacg_network/headers.dart' as picacg;
 import 'package:pica_comic/network/res.dart';
+import 'package:pica_comic/tools/file_type.dart';
 import 'package:pica_comic/tools/translations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -52,29 +52,22 @@ T need<T>(Res<T> res, String what) {
   fail('$what: $message');
 }
 
-/// Downloads the first bytes of [url] and checks that it is an image.
-Future<void> expectImage(String url, {Map<String, String> headers = const {}}) async {
-  final dio = Dio(BaseOptions(
-    connectTimeout: const Duration(seconds: 15),
-    receiveTimeout: const Duration(seconds: 15),
-    responseType: ResponseType.bytes,
-    validateStatus: (_) => true,
-    headers: {'User-Agent': webUA, 'Range': 'bytes=0-2047', ...headers},
-  ));
+/// Loads one image the way the reader does and checks what ends up in the
+/// cache.
+Future<void> expectLoads(Stream<DownloadProgress> image) async {
+  final DownloadProgress last;
   try {
-    final Response<List<int>> res;
-    try {
-      res = await dio.get<List<int>>(url);
-    } on DioException catch (e) {
-      throw Unreachable('image host: ${e.message ?? e.error}');
-    }
-    expect(res.statusCode, anyOf(200, 206),
-        reason: 'image request was refused: $url');
-    expect(res.headers.value('content-type') ?? '', startsWith('image/'),
-        reason: 'not an image: $url');
-  } finally {
-    dio.close(force: true);
+    last = await image.last;
+  } on DioException catch (e) {
+    throw Unreachable('image host: ${e.message ?? e.error}');
   }
+  expect(last.finished, isTrue);
+  final data = last.data ?? await last.getFile().readAsBytes();
+  expect(data, isNotEmpty);
+  expect(detectFileType(data).mime, startsWith('image/'),
+      reason: 'what was downloaded is not an image');
+  expect(last.getFile().lengthSync(), data.length,
+      reason: 'the cached file differs from the image');
 }
 
 void source(String name, Future<void> Function() body) {
@@ -132,6 +125,7 @@ void main() {
 
     final reader = need(await network.getReaderLink(first.link, 1), 'reader');
     expect(reader, matches(r'^https://e-hentai\.org/s/[0-9a-f]+/\d+-1$'));
+    await expectLoads(ImageManager().getEhImageNew(gallery, 1));
   });
 
   source('wnacg', () async {
@@ -154,7 +148,7 @@ void main() {
 
     final images = need(await network.getImages(first.id), 'image list');
     expect(images, isNotEmpty, reason: 'no images for gallery ${first.id}');
-    await expectImage(images.first);
+    await expectLoads(ImageManager().getImage(images.first));
   });
 
   source('hitomi', () async {
@@ -170,15 +164,7 @@ void main() {
     expect(comic.name, isNotEmpty);
     expect(comic.files, isNotEmpty);
 
-    GG.cacheTime = null;
-    final String url;
-    try {
-      url = await GG().urlFromUrlFromHash(id, comic.files.first, 'webp', null);
-    } on DioException catch (e) {
-      throw Unreachable('gg.js: ${e.message ?? e.error}');
-    }
-    await expectImage(url,
-        headers: {'Referer': 'https://hitomi.la/reader/$id.html'});
+    await expectLoads(ImageManager().getHitomiImage(comic.files.first, id));
   });
 
   source('jm', () async {
@@ -199,7 +185,11 @@ void main() {
     final chapter = info.series.isEmpty ? id : info.series.values.first;
     final images = need(await network.getChapter(chapter), 'chapter');
     expect(images, isNotEmpty, reason: 'no images in chapter $chapter');
-    await expectImage(images.first, headers: getImgHeaders());
+    final image = images.first;
+    await expectLoads(ImageManager().getJmImage(image, null,
+        epsId: chapter,
+        scrambleId: '220980',
+        bookId: image.substring(image.lastIndexOf('/') + 1)));
   });
 
   source('nhentai', () async {
@@ -216,6 +206,7 @@ void main() {
 
     final images = need(await network.getImages(first.id), 'image list');
     expect(images, isNotEmpty);
+    await expectLoads(ImageManager().getImage(images.first));
   });
 
   // Every picacg endpoint needs an account. Without one the only thing that
