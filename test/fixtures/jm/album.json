@@ -1,0 +1,47 @@
+{
+ "id": 1490554,
+ "name": "样本标题",
+ "images": [],
+ "addtime": "1794554502",
+ "description": "",
+ "total_views": "6637",
+ "total_photos": 25,
+ "likes": "418",
+ "series": [],
+ "series_id": "0",
+ "real_link": "",
+ "comment_total": "3",
+ "author": [
+  "作者1"
+ ],
+ "tags": [
+  "tags1",
+  "tags2",
+  "tags3"
+ ],
+ "works": [
+  "works1"
+ ],
+ "actors": [
+  "actors1"
+ ],
+ "related_list": [
+  {
+   "id": "34",
+   "author": "作者1",
+   "name": "样本标题1",
+   "image": ""
+  },
+  {
+   "id": "45",
+   "author": "作者2",
+   "name": "样本标题2",
+   "image": ""
+  }
+ ],
+ "liked": false,
+ "is_favorite": false,
+ "is_aids": false,
+ "price": "",
+ "purchased": ""
+}

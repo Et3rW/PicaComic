@@ -1,0 +1,4 @@
+{"code":200,"message":"success","data":{"pages":{"docs":[
+ {"_id":"p1","media":{"originalName":"01.jpg","path":"tobeimg/01.jpg","fileServer":"https://storage1.picacomic.com"},"id":"p1"},
+ {"_id":"p2","media":{"originalName":"02.jpg","path":"02.jpg","fileServer":"https://storage-b.picacomic.com"},"id":"p2"}
+],"total":2,"limit":40,"page":1,"pages":1},"ep":{"_id":"e1","title":"第1話"}}}

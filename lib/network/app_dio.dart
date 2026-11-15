@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/services.dart';
 import 'package:pica_comic/foundation/log.dart';
 import 'package:dio_http2_adapter/dio_http2_adapter.dart';
@@ -91,7 +92,15 @@ class AppHttpAdapter implements HttpClientAdapter{
 
   AppHttpAdapter(this.http2);
 
+  /// Replaces the real transport in tests, so the request and parsing code of
+  /// every source can run against saved responses.
+  @visibleForTesting
+  static HttpClientAdapter? testAdapter;
+
   static Future<HttpClientAdapter> createAdapter(bool http2) async{
+    if (testAdapter != null) {
+      return testAdapter!;
+    }
     return http2 ? Http2Adapter(ConnectionManager(
       idleTimeout: const Duration(seconds: 15),
       onClientCreate: (_, config) {
@@ -224,6 +233,16 @@ class AppHttpAdapter implements HttpClientAdapter{
 
     return res;
   }
+}
+
+/// A [Dio] without logging, retries or host rules, for the few requests that
+/// were always sent that way. Only differs from `Dio(options)` under test.
+Dio plainDio([BaseOptions? options]) {
+  var dio = Dio(options);
+  if (AppHttpAdapter.testAdapter != null) {
+    dio.httpClientAdapter = AppHttpAdapter.testAdapter!;
+  }
+  return dio;
 }
 
 Dio logDio([BaseOptions? options, bool http2 = false]) {

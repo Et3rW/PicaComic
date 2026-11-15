@@ -4,6 +4,7 @@ import 'package:pica_comic/foundation/log.dart';
 import 'package:pica_comic/network/res.dart';
 import 'package:dio/dio.dart';
 
+import '../app_dio.dart';
 import '../http_client.dart';
 
 ///改写自 hitomi.la 网站上的js脚本
@@ -26,7 +27,7 @@ Future<Res<List<int>>> fetchComicData(String url, int start, {int? maxLength, in
       end = maxLength;
     }
     assert(start < end);
-    var dio = Dio(BaseOptions(
+    var dio = plainDio(BaseOptions(
       connectTimeout: const Duration(seconds: 5),
       receiveTimeout: const Duration(seconds: 5),
       sendTimeout: const Duration(seconds: 5),

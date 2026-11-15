@@ -1,0 +1,247 @@
+// Checks every built-in source against the real site.
+//
+// Not part of the normal test run (it lives outside test/): it needs network
+// access and depends on the sites. Run it with
+//
+//     flutter test test_live
+//
+// A source fails when its site answers but the app can no longer make sense
+// of the answer. A site that cannot be reached from this machine (blocked,
+// down, challenge page) is reported as skipped, not failed.
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:dio/dio.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:pica_comic/base.dart';
+import 'package:pica_comic/foundation/cache_manager.dart';
+import 'package:pica_comic/network/app_dio.dart';
+import 'package:pica_comic/network/cookie_jar.dart';
+import 'package:pica_comic/network/eh_network/eh_main_network.dart';
+import 'package:pica_comic/network/hitomi_network/hitomi_main_network.dart';
+import 'package:pica_comic/network/hitomi_network/image.dart';
+import 'package:pica_comic/network/htmanga_network/htmanga_main_network.dart';
+import 'package:pica_comic/network/jm_network/headers.dart';
+import 'package:pica_comic/network/jm_network/jm_network.dart';
+import 'package:pica_comic/network/nhentai_network/nhentai_main_network.dart';
+import 'package:pica_comic/network/picacg_network/headers.dart' as picacg;
+import 'package:pica_comic/network/res.dart';
+import 'package:pica_comic/tools/translations.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+class Unreachable implements Exception {
+  final String message;
+  Unreachable(this.message);
+}
+
+final _networkFailure = RegExp(
+    r'SocketException|HandshakeException|HttpException|TlsException|'
+    r'Failed host lookup|[Tt]imed? ?out|超时|Connection (closed|reset|refused)|'
+    r'status code of (403|429|5\d\d)|Cloudflare|[Cc]hallenge|temporarily banned');
+
+/// The data of [res], or [Unreachable] when the request itself failed.
+T need<T>(Res<T> res, String what) {
+  if (!res.error) return res.data;
+  final message = res.errorMessage ?? 'unknown error';
+  if (_networkFailure.hasMatch(message)) {
+    throw Unreachable('$what: $message');
+  }
+  fail('$what: $message');
+}
+
+/// Downloads the first bytes of [url] and checks that it is an image.
+Future<void> expectImage(String url, {Map<String, String> headers = const {}}) async {
+  final dio = Dio(BaseOptions(
+    connectTimeout: const Duration(seconds: 15),
+    receiveTimeout: const Duration(seconds: 15),
+    responseType: ResponseType.bytes,
+    validateStatus: (_) => true,
+    headers: {'User-Agent': webUA, 'Range': 'bytes=0-2047', ...headers},
+  ));
+  try {
+    final Response<List<int>> res;
+    try {
+      res = await dio.get<List<int>>(url);
+    } on DioException catch (e) {
+      throw Unreachable('image host: ${e.message ?? e.error}');
+    }
+    expect(res.statusCode, anyOf(200, 206),
+        reason: 'image request was refused: $url');
+    expect(res.headers.value('content-type') ?? '', startsWith('image/'),
+        reason: 'not an image: $url');
+  } finally {
+    dio.close(force: true);
+  }
+}
+
+void source(String name, Future<void> Function() body) {
+  test(name, () async {
+    try {
+      await body();
+    } on Unreachable catch (e) {
+      // ignore: avoid_print
+      print('::warning title=$name unreachable::${e.message}');
+      markTestSkipped('$name could not be reached: ${e.message}');
+    }
+  }, timeout: const Timeout(Duration(minutes: 3)));
+}
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  late Directory root;
+
+  setUpAll(() {
+    // The test binding blocks HTTP; these checks are about the real network.
+    HttpOverrides.global = null;
+    SharedPreferences.setMockInitialValues({});
+    AppTranslation.translations = {};
+    root = Directory.systemTemp.createTempSync('pica_live_test');
+    CacheManager.instance =
+        CacheManager.createForTest('${root.path}/cache', '${root.path}/cache.db');
+    SingleInstanceCookieJar.instance = null;
+    SingleInstanceCookieJar(':memory:');
+  });
+
+  tearDownAll(() {
+    SingleInstanceCookieJar.instance?.dispose();
+    SingleInstanceCookieJar.instance = null;
+    CacheManager.instance = null;
+    root.deleteSync(recursive: true);
+  });
+
+  source('e-hentai', () async {
+    final network = EhNetwork();
+    // Category filter 767 = Non-H only.
+    final list = need(
+        await network.getGalleries('https://e-hentai.org/?f_cats=767'), 'list');
+    expect(list.galleries, isNotEmpty, reason: 'no galleries in the list');
+    expect(list.next, isNotNull, reason: 'no link to the next page');
+    final first = list.galleries.first;
+    expect(first.title, isNotEmpty);
+    expect(first.link, matches(r'^https://e-hentai\.org/g/\d+/[0-9a-f]+/$'));
+    expect(first.coverPath, startsWith('http'));
+
+    final gallery = need(await network.getGalleryInfo(first.link), 'gallery');
+    expect(gallery.title, isNotEmpty);
+    expect(int.parse(gallery.maxPage), greaterThan(0));
+    expect(gallery.auth!['gid'], isNotEmpty);
+    expect(gallery.auth!['token'], isNotEmpty);
+
+    final reader = need(await network.getReaderLink(first.link, 1), 'reader');
+    expect(reader, matches(r'^https://e-hentai\.org/s/[0-9a-f]+/\d+-1$'));
+  });
+
+  source('wnacg', () async {
+    final network = HtmangaNetwork();
+    final base = HtmangaNetwork.baseUrl;
+    final home = need(await network.getHomePage(), 'home page');
+    expect(home.links, isNotEmpty, reason: 'no sections on the home page');
+    expect(home.comics.expand((section) => section), isNotEmpty);
+
+    final list = need(await network.getComicList('$base/albums.html', 1), 'list');
+    expect(list, isNotEmpty, reason: 'no galleries in the list');
+    final first = list.first;
+    expect(first.name, isNotEmpty);
+    expect(int.parse(first.id), greaterThan(0));
+
+    final info = need(await network.getComicInfo(first.id), 'gallery');
+    expect(info.name, isNotEmpty);
+    expect(info.pages, greaterThan(0));
+    expect(info.thumbnails, isNotEmpty);
+
+    final images = need(await network.getImages(first.id), 'image list');
+    expect(images, isNotEmpty, reason: 'no images for gallery ${first.id}');
+    await expectImage(images.first);
+  });
+
+  source('hitomi', () async {
+    final network = HiNetwork();
+    final domain = network.baseDomain;
+    final list = need(
+        await network.getComics('https://ltn.$domain/index-all.nozomi'), 'index');
+    expect(list.comicIds, isNotEmpty);
+    expect(list.total, greaterThan(1000));
+
+    final id = list.comicIds.first.toString();
+    final comic = need(await network.getComicInfo(id), 'gallery');
+    expect(comic.name, isNotEmpty);
+    expect(comic.files, isNotEmpty);
+
+    GG.cacheTime = null;
+    final String url;
+    try {
+      url = await GG().urlFromUrlFromHash(id, comic.files.first, 'webp', null);
+    } on DioException catch (e) {
+      throw Unreachable('gg.js: ${e.message ?? e.error}');
+    }
+    await expectImage(url,
+        headers: {'Referer': 'https://hitomi.la/reader/$id.html'});
+  });
+
+  source('jm', () async {
+    final network = JmNetwork();
+    final domains = await network.getApiDomains();
+    if (domains.error) throw Unreachable('domain list: ${domains.errorMessage}');
+    appdata.appSettings.jmApiDomains = List<String>.from(domains.data);
+
+    final home = need(await network.getHomePage(), 'home page');
+    expect(home.items, isNotEmpty);
+    final comics = home.items.expand((item) => item.comics).toList();
+    expect(comics, isNotEmpty, reason: 'no comics on the home page');
+
+    final id = comics.first.id;
+    final info = need(await network.getComicInfo(id), 'album');
+    expect(info.name, isNotEmpty);
+
+    final chapter = info.series.isEmpty ? id : info.series.values.first;
+    final images = need(await network.getChapter(chapter), 'chapter');
+    expect(images, isNotEmpty, reason: 'no images in chapter $chapter');
+    await expectImage(images.first, headers: getImgHeaders());
+  });
+
+  source('nhentai', () async {
+    final network = NhentaiNetwork();
+    await network.init();
+    final home = need(await network.getHomePage(), 'home page');
+    expect(home.latest, isNotEmpty, reason: 'no galleries on the home page');
+    final first = home.latest.first;
+    expect(first.title, isNotEmpty);
+
+    final comic = need(await network.getComicInfo(first.id), 'gallery');
+    expect(comic.title, isNotEmpty);
+    expect(comic.thumbnails, isNotEmpty);
+
+    final images = need(await network.getImages(first.id), 'image list');
+    expect(images, isNotEmpty);
+  });
+
+  // Every picacg endpoint needs an account. Without one the only thing that
+  // can be checked is that the server still accepts how requests are signed:
+  // it then answers "unauthorized" rather than rejecting the signature.
+  source('picacg', () async {
+    final options = picacg.getHeaders('get', '', 'categories');
+    options.validateStatus = (_) => true;
+    options.responseType = ResponseType.plain;
+    final dio = logDio(options);
+    try {
+      final Response<String> res;
+      try {
+        res = await dio.get<String>('https://picaapi.picacomic.com/categories');
+      } on DioException catch (e) {
+        throw Unreachable('api: ${e.message ?? e.error}');
+      }
+      final Object? body;
+      try {
+        body = jsonDecode(res.data ?? '');
+      } on FormatException {
+        throw Unreachable('api answered ${res.statusCode} without JSON');
+      }
+      expect(body, isA<Map>());
+      expect(res.statusCode, 401, reason: 'unexpected answer: $body');
+      expect((body as Map)['message'], 'unauthorized',
+          reason: 'unexpected answer: $body');
+    } finally {
+      dio.close(force: true);
+    }
+  });
+}

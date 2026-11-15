@@ -2,6 +2,7 @@ import 'package:pica_comic/foundation/def.dart';
 import 'hitomi_main_network.dart';
 import 'hitomi_models.dart';
 import 'package:dio/dio.dart';
+import '../app_dio.dart';
 
 ///获取图像url使用的一个临时的类
 ///
@@ -44,7 +45,7 @@ class GG{
       b = cacheB!;
       return;
     }
-    var dio = Dio(BaseOptions(
+    var dio = plainDio(BaseOptions(
         responseType: ResponseType.plain,
         headers: {
           "User-Agent": webUA,
