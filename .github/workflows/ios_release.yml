@@ -16,6 +16,12 @@ jobs:
       COCOAPODS_DISABLE_STATS: 'true'
     steps:
       - uses: actions/checkout@v4
+      - name: Read version from pubspec.yaml
+        run: |
+          version=$(sed -n 's/^version:[[:space:]]*//p' pubspec.yaml | head -n 1)
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+\+[0-9]+$ ]] || { echo "Unexpected version: $version"; exit 1; }
+          echo "APP_VERSION=${version%%+*}" >> "$GITHUB_ENV"
+          echo "APP_BUILD=${version##*+}" >> "$GITHUB_ENV"
       - name: Select Xcode
         run: sudo xcode-select --switch /Applications/Xcode_26.3.app
       - uses: subosito/flutter-action@v2
@@ -31,12 +37,12 @@ jobs:
         shell: bash
         run: |
           python3 - <<'PY'
-          import pathlib, plistlib, subprocess
+          import os, pathlib, plistlib, subprocess
           app = pathlib.Path('build/ios/iphoneos/Runner.app')
           with (app / 'Info.plist').open('rb') as f:
               info = plistlib.load(f)
-          assert info['CFBundleShortVersionString'] == '5.1.7', info
-          assert info['CFBundleVersion'] == '5017', info
+          assert info['CFBundleShortVersionString'] == os.environ['APP_VERSION'], info
+          assert info['CFBundleVersion'] == os.environ['APP_BUILD'], info
           assert info['CFBundleIdentifier'] == 'com.github.pacalini.picaComic', info
           assert info['CFBundleSupportedPlatforms'] == ['iPhoneOS'], info
           executable = app / info['CFBundleExecutable']
@@ -47,13 +53,13 @@ jobs:
           mkdir -p dist/Payload
           ditto build/ios/iphoneos/Runner.app dist/Payload/Runner.app
           cd dist
-          ditto -c -k --keepParent Payload PicaComic-5.1.7-unsigned.ipa
-          shasum -a 256 PicaComic-5.1.7-unsigned.ipa > SHA256SUMS-ios.txt
+          ditto -c -k --keepParent Payload "PicaComic-$APP_VERSION-unsigned.ipa"
+          shasum -a 256 "PicaComic-$APP_VERSION-unsigned.ipa" > SHA256SUMS-ios.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: PicaComic-5.1.7-ios
+          name: PicaComic-${{ env.APP_VERSION }}-ios
           path: |
-            dist/PicaComic-5.1.7-unsigned.ipa
+            dist/PicaComic-${{ env.APP_VERSION }}-unsigned.ipa
             dist/SHA256SUMS-ios.txt
           if-no-files-found: error
           retention-days: 30

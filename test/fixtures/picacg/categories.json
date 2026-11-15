@@ -1,0 +1,5 @@
+{"code":200,"message":"success","data":{"categories":[
+ {"title":"援助嗶咔","thumb":{"originalName":"help.jpg","path":"help.jpg","fileServer":"https://wikawika.xyz/static/"},"isWeb":true,"active":true,"link":"https://donate.wikawika.xyz"},
+ {"_id":"5821859b5f6b9a4f93dbf6e9","title":"分類一","description":"未知","thumb":{"originalName":"a.jpg","path":"tobeimg/a.jpg","fileServer":"https://storage1.picacomic.com"}},
+ {"_id":"5821859b5f6b9a4f93dbf6d1","title":"分類二","description":"未知","thumb":{"originalName":"b.jpg","path":"b.jpg","fileServer":"https://storage1.picacomic.com/static/"}}
+]}}

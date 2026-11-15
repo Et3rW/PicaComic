@@ -34,6 +34,8 @@ import '../../network/http_client.dart';
 import '../../network/http_proxy.dart';
 import '../../network/jm_network/jm_network.dart';
 import '../../network/nhentai_network/nhentai_main_network.dart';
+import '../../network/eh_network/tag_settings.dart';
+import '../../network/eh_network/tag_stack.dart';
 import '../../network/nhentai_network/tag_settings.dart';
 import '../../network/nhentai_network/tag_stack.dart';
 import '../nhentai/tag_stack_page.dart';

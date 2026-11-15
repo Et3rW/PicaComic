@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 5.1.7+5017
+version: 5.1.8+5018
 environment:
   sdk: '>=3.3.0'
 
@@ -35,10 +35,13 @@ dependencies:
   crypto: any
   pointycastle: ^3.7.3
   uuid: ^3.0.7
+  # Git dependencies point at forks under Et3rW and are pinned to full commit
+  # hashes (each fork also carries a `pica-pin` tag on that commit), so a build
+  # never depends on someone else's repository staying online.
   photo_view:
     git:
-      url: https://github.com/wgh136/photo_view
-      ref: a1255d1
+      url: https://github.com/Et3rW/photo_view
+      ref: a1255d1b5945aad4b7323303ec2ecdf0c90ffc4c
   url_launcher: ^6.1.8
   path_provider: ^2.0.12
   file_selector: ^1.0.1
@@ -62,29 +65,29 @@ dependencies:
   flutter_reorderable_grid_view: 5.0.1
   webdav_client:
     git:
-      url: https://github.com/wgh136/webdav_client
-      ref: main
+      url: https://github.com/Et3rW/webdav_client
+      ref: f2875f9327dabea1732373fb8b24a71917360f46
   dio_http2_adapter: 2.3.1+1
   sqlite3: 2.1.0
   sqlite3_flutter_libs: any
   zip_flutter:
     git:
-      url: https://github.com/wgh136/zip_flutter
-      ref: 64bb624
+      url: https://github.com/Et3rW/zip_flutter
+      ref: 64bb624d1cf37743678dfcb380fe1ed5decccce5
   collection: ^1.18.0
   window_manager:
   pdf: ^3.10.8
   flutter_qjs:
     git:
-      url: https://github.com/wgh136/flutter_qjs
-      ref: 8feae95
+      url: https://github.com/Et3rW/flutter_qjs
+      ref: 8feae95df7fb00455df129ad7a0dfec1d0e8d8e4
   sliver_tools: ^0.2.12
   mime: ^1.0.5
   desktop_webview_window:
     git:
-      url: https://github.com/wgh136/flutter_desktop_webview
+      url: https://github.com/Et3rW/flutter_desktop_webview
       path: packages/desktop_webview_window
-      ref: 7801fc5
+      ref: 7801fc582ecf5a7351632887891ecf309a7b2583
   flutter_inappwebview: ^6.0.0
 
 dev_dependencies:
@@ -98,14 +101,16 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^2.0.0
   flutter_to_arch:
-    git: https://github.com/wgh136/flutter_to_arch
+    git:
+      url: https://github.com/Et3rW/flutter_to_arch
+      ref: 15bfead0380fda79b0256b37c73b886b0882f1bf
 
 flutter_to_arch:
   name: Pica Comic
   icon: debian/gui/pica-comic.png
   categories: Utility
   keywords: Flutter;comic;images;
-  url: https://github.com/Pacalini/PicaComic
+  url: https://github.com/Et3rW/PicaComic
   depends:
     - gtk3
     - webkit2gtk-4.1

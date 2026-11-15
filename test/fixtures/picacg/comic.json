@@ -1,0 +1,8 @@
+{"code":200,"message":"success","data":{"comic":{
+ "_id":"5f0000000000000000000001",
+ "_creator":{"_id":"58f000000000000000000001","gender":"m","name":"uploader1","verified":false,"exp":1200,"level":4,"characters":[],"role":"knight","title":"萌新","slogan":"样本签名","avatar":{"originalName":"avatar.jpg","path":"avatar.jpg","fileServer":"https://storage1.picacomic.com"}},
+ "title":"样本标题1","description":"样本简介","thumb":{"originalName":"c1.jpg","path":"tobeimg/c1.jpg","fileServer":"https://storage1.picacomic.com"},
+ "author":"作者1","chineseTeam":"汉化组1","categories":["分類一","分類二"],"tags":["标签1","标签2"],
+ "pagesCount":24,"epsCount":2,"finished":true,"updated_at":"2026-11-01T08:00:00.000Z","created_at":"2026-10-01T08:00:00.000Z",
+ "allowDownload":true,"allowComment":true,"totalLikes":7,"totalViews":100,"viewsCount":100,"likesCount":7,"commentsCount":3,"isFavourite":true,"isLiked":false
+}}}

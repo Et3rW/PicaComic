@@ -135,7 +135,7 @@ class HtmangaNetwork {
           var name = c.querySelector("div.info > div.title > a")!.text;
           var infoCol = c.querySelector("div.info > div.info_col")!.text;
           var lr = infoCol.split(",");
-          var time = lr[0];
+          var time = lr[0].trim();
           var pagesStr = "";
           for (int i = 0; i < lr[1].length; i++) {
             if (lr[1][i].isNum) {
@@ -205,8 +205,9 @@ class HtmangaNetwork {
                   .replaceAll("</em>", "");
           var infoCol = comic.querySelector("div.info > div.info_col")!.text;
           var lr = infoCol.split("，");
-          var time = lr[1].removeAllBlank;
-          time = time.replaceAll("\n", "");
+          // "創建於2026-11-15 16:52:32" on search pages: keep the space
+          // between the date and the time of day.
+          var time = lr[1].trim().replaceAll(RegExp(r"\s+"), " ");
           var pagesStr = "";
           for (int i = 0; i < lr[0].length; i++) {
             if (lr[0][i].isNum) {
@@ -279,7 +280,11 @@ class HtmangaNetwork {
         var link = tag.attributes["href"]!;
         tags[tag.text] = link;
       }
-      var description = document.querySelector("div.asTBcell.uwconn > p")!.text;
+      // There can be an empty paragraph in front of the description.
+      var description = document
+          .querySelectorAll("div.asTBcell.uwconn > p")
+          .map((e) => e.text.trim())
+          .firstWhere((text) => text.isNotEmpty, orElse: () => "");
       var uploader =
           document.querySelector("div.asTBcell.uwuinfo > a > p")!.text;
       var avatar = document
@@ -323,16 +328,31 @@ class HtmangaNetwork {
       return Res(null, errorMessage: res.errorMessage);
     }
     try {
-      var urls = RegExp(r"(?<=//)[\w./\[\]()-]+").allMatches(res.data);
-      var images = <String>[];
-      for (var url in urls) {
-        images.add("https://${url[0]!}");
-      }
-      return Res(images);
+      return Res(parseImageList(res.data));
     } catch (e, s) {
       LogManager.addLog(LogLevel.error, "Data Analyse", "$e\n$s");
       return Res(null, errorMessage: e.toString());
     }
+  }
+
+  /// Image URLs from the script that fills the reader's `imglist`.
+  ///
+  /// The query string has to be kept: the image host answers 403 without
+  /// its `verify` token.
+  static List<String> parseImageList(String script) {
+    var images = <String>[];
+    var entries = RegExp(r'''url:[^"]*\\?"(?:https?:)?//([^"\\\s]+)''')
+        .allMatches(script);
+    for (var entry in entries) {
+      images.add("https://${entry[1]!}");
+    }
+    if (images.isEmpty) {
+      // Older form of the script: every "//host/path" in it is an image.
+      for (var url in RegExp(r"(?<=//)[\w./\[\]()-]+").allMatches(script)) {
+        images.add("https://${url[0]!}");
+      }
+    }
+    return images;
   }
 
   /// 获取收藏夹

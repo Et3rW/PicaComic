@@ -8,6 +8,8 @@ import 'package:pica_comic/foundation/image_loader/cached_image.dart';
 import 'package:pica_comic/network/download.dart';
 import 'package:pica_comic/network/eh_network/eh_main_network.dart';
 import 'package:pica_comic/network/eh_network/eh_models.dart';
+import 'package:pica_comic/network/eh_network/tag_settings.dart';
+import 'package:pica_comic/network/eh_network/tag_stack.dart';
 import 'package:pica_comic/network/res.dart';
 import 'package:pica_comic/pages/comic_page.dart';
 import 'package:pica_comic/pages/reader/comic_reading_page.dart';
@@ -141,14 +143,32 @@ class EhGalleryPage extends BaseComicPage<Gallery> {
     if (tag == data!.uploader) {
       namespace = "uploader";
     }
-    if (tag.contains(" ")) {
-      tag = "\"$tag\"";
-    }
+    var keyword = tag.contains(" ") ? "\"$tag\"" : tag;
     if (namespace != "") {
-      tag = "$namespace:$tag";
+      keyword = "$namespace:$keyword";
+      // Opened from a search made of tags: add this tag to them.
+      var base = EhTagSettings.stackEnabled
+          ? ehTermsFromKeyword(
+              SearchPageContext.keywordForComic("ehentai", link) ?? "")
+          : null;
+      if (base != null) {
+        var result = ehStackAdd(base, EhTagTerm(namespace, tag));
+        switch (result.outcome) {
+          case EhStackOutcome.duplicate:
+            showToast(message: "这个标签已经在当前组合里了".tl);
+            return;
+          case EhStackOutcome.limit:
+            showToast(
+                message:
+                    "最多同时 @n 个标签".tlParams({"n": "$ehTagStackLimit"}));
+            return;
+          case EhStackOutcome.added:
+            keyword = ehKeywordFromTerms(result.terms);
+        }
+      }
     }
     context.to(() => SearchResultPage(
-          keyword: tag,
+          keyword: keyword,
           sourceKey: "ehentai",
         ));
   }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -22,7 +23,6 @@ import 'package:pica_comic/tools/file_type.dart';
 import '../base.dart';
 import '../network/eh_network/eh_main_network.dart';
 import '../network/hitomi_network/image.dart';
-import '../network/jm_network/jm_network.dart';
 import '../network/jm_network/headers.dart';
 import '../network/res.dart';
 
@@ -57,37 +57,147 @@ class ImageManager {
 
   int ehgtLoading = 0;
 
-  /// 获取图片, 适用于没有任何限制的图片链接
-  Stream<DownloadProgress> getImage(final String url,
-      [Map<String, String>? headers]) async* {
-    await wait(url);
-    loadingItems[url] = DownloadProgress(0, 1, url, "");
+  /// Loads one image: at most one load per key at a time, the cache is asked
+  /// first, the download is written to the cache while it arrives, and the
+  /// partial file is removed when the load fails or the listener goes away.
+  ///
+  /// Only the last event is [DownloadProgress.finished]; by then the file is
+  /// complete on disk.
+  Stream<DownloadProgress> _load(_ImageJob job) async* {
+    final key = job.key;
+    await wait(key);
+    loadingItems[key] = DownloadProgress(0, 1, job.reportUrl, "");
     CachingFile? caching;
-    var countedEhgt = false;
 
     try {
-      final key = url;
       var cache = await CacheManager().findCache(key);
       if (cache != null) {
         yield DownloadProgress(
-            1, 1, url, cache, null, CacheManager().getType(key));
-        loadingItems.remove(url);
+            1, 1, job.reportUrl, cache, null, CacheManager().getType(key));
         return;
       }
 
       final cachingFile = await CacheManager().openWrite(key);
       caching = cachingFile;
       final savePath = cachingFile.file.path;
-      yield DownloadProgress(0, 100, url, savePath);
-      headers = headers ?? {};
-      headers["User-Agent"] ??= webUA;
-      headers["Connection"] = "Keep-Alive";
-      var realUrl = url;
-      if (url.contains("s.exhentai.org")) {
-        // s.exhentai.org 有严格的加载限制
-        realUrl = url.replaceFirst("s.exhentai.org", "ehgt.org");
+      yield DownloadProgress(0, 100, job.reportUrl, savePath);
+
+      await job.prepare?.call();
+
+      final buffer = BytesBuilder();
+      late Response<ResponseBody> response;
+      for (var attempt = 1;; attempt++) {
+        try {
+          buffer.clear();
+          cachingFile.reset();
+          response = await job.request();
+          final body = response.data;
+          if (body == null) {
+            throw Exception("Empty Data");
+          }
+          final total = _contentLength(body);
+          await for (var chunk in body.stream) {
+            buffer.add(chunk);
+            if (job.transform == null) {
+              await cachingFile.writeBytes(chunk);
+            }
+            var progress = DownloadProgress(
+                buffer.length,
+                job.sizeWhileLoading(buffer.length, total),
+                job.reportUrl,
+                savePath);
+            yield progress;
+            loadingItems[key] = progress;
+          }
+          break;
+        } catch (e) {
+          if (attempt >= job.attempts) {
+            if (job.exhausted != null) {
+              throw job.exhausted!;
+            }
+            rethrow;
+          }
+          if (job.beforeRetry == null || !await job.beforeRetry!(e)) {
+            rethrow;
+          }
+        }
       }
-      if (realUrl.contains("ehgt.org")) {
+
+      var bytes = buffer.takeBytes();
+      if (job.transform != null) {
+        // Everything is here, the rest is processing.
+        var progress = DownloadProgress(bytes.length,
+            max(bytes.length + 1, bytes.length * 4 ~/ 3), job.reportUrl, savePath);
+        yield progress;
+        loadingItems[key] = progress;
+        bytes = await job.transform!(bytes, savePath);
+        // The transform may have written the file itself.
+        cachingFile.reset();
+        await cachingFile.writeBytes(bytes);
+      }
+      await cachingFile.close();
+      String? ext;
+      if (job.storeType) {
+        ext = job.ext != null ? job.ext!(bytes) : getExt(response);
+        CacheManager().setType(key, ext);
+      }
+      yield DownloadProgress(
+          bytes.length, bytes.length, job.reportUrl, savePath, bytes, ext);
+    } catch (e, s) {
+      caching?.cancel();
+      log("Failed to load image ${job.reportUrl}\n$e\n$s", "Network",
+          LogLevel.error);
+      if (e is DioException && e.type == DioExceptionType.badResponse) {
+        var statusCode = e.response?.statusCode;
+        if (statusCode != null && statusCode >= 400 && statusCode < 500) {
+          throw BadRequestException(e.message.toString());
+        }
+      }
+      rethrow;
+    } finally {
+      job.onDone?.call();
+      // Also runs when the listener cancels: drop the partial file.
+      caching?.cancel();
+      loadingItems.remove(key);
+    }
+  }
+
+  static int? _contentLength(ResponseBody body) {
+    var header = (body.headers["content-length"] ??
+            body.headers["Content-Length"])
+        ?.firstOrNull;
+    var length = header == null ? null : int.tryParse(header);
+    return length != null && length > 0 ? length : null;
+  }
+
+  static void _refuseHtml(Response<ResponseBody> res) {
+    var type = (res.data!.headers["Content-Type"] ??
+            res.data!.headers["content-type"])
+        ?.firstOrNull;
+    if (type == "text/html; charset=UTF-8") {
+      throw ImageExceedError();
+    }
+  }
+
+  /// 获取图片, 适用于没有任何限制的图片链接
+  Stream<DownloadProgress> getImage(final String url,
+      [Map<String, String>? headers]) {
+    headers = headers ?? {};
+    headers["User-Agent"] ??= webUA;
+    headers["Connection"] = "Keep-Alive";
+    var realUrl = url;
+    if (url.contains("s.exhentai.org")) {
+      // s.exhentai.org 有严格的加载限制
+      realUrl = url.replaceFirst("s.exhentai.org", "ehgt.org");
+    }
+    var countedEhgt = false;
+
+    return _load(_ImageJob(
+      key: url,
+      reportUrl: url,
+      prepare: () async {
+        // ehgt.org: three images at a time.
+        if (!realUrl.contains("ehgt.org")) return;
         if (ehgtLoading < 3) {
           ehgtLoading++;
           countedEhgt = true;
@@ -99,645 +209,333 @@ class ImageManager {
           ehgtLoading++;
           countedEhgt = true;
         }
-      }
-      var dioRes = await dio.get<ResponseBody>(realUrl,
+      },
+      request: () => dio.get<ResponseBody>(realUrl,
           options:
-              Options(responseType: ResponseType.stream, headers: headers));
-      if (dioRes.data == null) {
-        throw Exception("Empty Data");
-      }
-      final imageData = BytesBuilder();
-      int? expectedBytes;
-      try {
-        expectedBytes =
-            int.parse(dioRes.data!.headers["Content-Length"]![0]) + 1;
-      } catch (e) {
-        //忽略
-      }
-      await for (var res in dioRes.data!.stream) {
-        imageData.add(res);
-        await cachingFile.writeBytes(res);
-        var progress = DownloadProgress(imageData.length,
-            (expectedBytes ?? imageData.length + 1), url, savePath);
-        yield progress;
-        loadingItems[url] = progress;
-      }
-      await cachingFile.close();
-      var ext = getExt(dioRes);
-      CacheManager().setType(key, ext);
-      var length = imageData.length;
-      yield DownloadProgress(
-        length,
-        length,
-        url,
-        savePath,
-        imageData.takeBytes(),
-        ext,
-      );
-    } catch (e, s) {
-      caching?.cancel();
-      log("$e\n$s", "Network", LogLevel.error);
-      if (e is DioException && e.type == DioExceptionType.badResponse) {
-        var statusCode = e.response?.statusCode;
-        if (statusCode != null && statusCode >= 400 && statusCode < 500) {
-          throw BadRequestException(e.message.toString());
+              Options(responseType: ResponseType.stream, headers: headers)),
+      onDone: () {
+        if (countedEhgt) {
+          ehgtLoading--;
         }
-      }
-      rethrow;
-    } finally {
-      if (countedEhgt) {
-        ehgtLoading--;
-      }
-      // Also runs when the listener cancels: drop the partial file.
-      caching?.cancel();
-      loadingItems.remove(url);
-    }
+      },
+    ));
   }
 
-  Stream<DownloadProgress> getEhImageNew(
-      final Gallery gallery, final int page) async* {
+  Stream<DownloadProgress> getEhImageNew(final Gallery gallery, final int page) {
     final galleryLink = gallery.link;
     final cacheKey = "$galleryLink$page";
     final gid = getGalleryId(galleryLink);
 
-    // check whether this image is loading
-    await wait(cacheKey);
-    loadingItems[cacheKey] = DownloadProgress(0, 1, cacheKey, "");
+    late final Dio dio;
+    late final String readerLink;
+    late final String imgKey;
+    late final bool mpv;
+    var image = "";
+    String? nl;
 
-    CachingFile? caching;
-
-    try {
-      final key = cacheKey;
-      var cache = await CacheManager().findCache(key);
-      if (cache != null) {
-        yield DownloadProgress(
-            1, 1, key, cache, null, CacheManager().getType(key));
-        loadingItems.remove(key);
+    Future<void> getShowKey() async {
+      while (gallery.auth!["showKey"] == "loading") {
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+      if (gallery.auth!["showKey"] != null || gallery.auth!["mpvKey"] != null) {
         return;
       }
+      gallery.auth!["showKey"] = "loading";
+      try {
+        var res = await EhNetwork().request(readerLink);
 
-      final cachingFile = await CacheManager().openWrite(key);
-      caching = cachingFile;
-      final savePath = cachingFile.file.path;
-      yield DownloadProgress(0, 100, key, savePath);
-
-      final options = BaseOptions(
-          followRedirects: true,
-          connectTimeout: const Duration(seconds: 8),
-          receiveTimeout: const Duration(seconds: 20),
-          headers: {"user-agent": webUA, "cookie": EhNetwork().cookiesStr});
-
-      var dio = logDio(options);
-
-      // Get imgKey
-      final readerLink =
-          (await EhNetwork().getReaderLink(galleryLink, page)).data;
-
-      Future<void> getShowKey() async {
-        while (gallery.auth!["showKey"] == "loading") {
-          await Future.delayed(const Duration(milliseconds: 100));
-        }
-        if (gallery.auth!["showKey"] != null ||
-            gallery.auth!["mpvKey"] != null) {
-          return;
-        }
-        gallery.auth!["showKey"] = "loading";
-        try {
-          var res = await EhNetwork().request(readerLink);
-
-          var html = parse(res.data);
-          var script = html
+        var html = parse(res.data);
+        var script = html
+            .querySelectorAll("script")
+            .firstWhereOrNull((element) => element.text.contains("showkey"));
+        if (script != null) {
+          var match = RegExp(r'showkey="(.*?)"').firstMatch(script.text);
+          final showKey = match!.group(1)!;
+          gallery.auth!["showKey"] = showKey;
+        } else {
+          final script = html
               .querySelectorAll("script")
-              .firstWhereOrNull((element) => element.text.contains("showkey"));
-          if (script != null) {
-            var match = RegExp(r'showkey="(.*?)"').firstMatch(script.text);
-            final showKey = match!.group(1)!;
-            gallery.auth!["showKey"] = showKey;
-          } else {
-            final script = html
-                .querySelectorAll("script")
-                .firstWhereOrNull((element) => element.text.contains("mpvkey"))
-                ?.text;
-            if (script == null) {
-              throw Exception("Failed to get showKey or mpvkey");
-            }
-            var mpvKey = script
-                .split(";")
-                .firstWhere((element) => element.contains("mpvkey"));
-            gallery.auth!["mpvKey"] = mpvKey.removeAllBlank
-                .replaceFirst("varmpvkey=", "")
-                .replaceAll('"', "");
-            var imageListScript = script
-                .split(";")
-                .firstWhere((element) => element.contains("imagelist"))
-                .removeAllBlank
-                .replaceFirst("varimagelist=", "");
-            gallery.auth!["imgKey"] =
-                jsonDecode(imageListScript).map((e) => e["k"]).join(",");
-            gallery.auth!.remove("showKey");
+              .firstWhereOrNull((element) => element.text.contains("mpvkey"))
+              ?.text;
+          if (script == null) {
+            throw Exception("Failed to get showKey or mpvkey");
           }
-        } catch (e) {
+          var mpvKey = script
+              .split(";")
+              .firstWhere((element) => element.contains("mpvkey"));
+          gallery.auth!["mpvKey"] = mpvKey.removeAllBlank
+              .replaceFirst("varmpvkey=", "")
+              .replaceAll('"', "");
+          var imageListScript = script
+              .split(";")
+              .firstWhere((element) => element.contains("imagelist"))
+              .removeAllBlank
+              .replaceFirst("varimagelist=", "");
+          gallery.auth!["imgKey"] =
+              jsonDecode(imageListScript).map((e) => e["k"]).join(",");
           gallery.auth!.remove("showKey");
-          rethrow;
         }
+      } catch (e) {
+        gallery.auth!.remove("showKey");
+        rethrow;
+      }
+    }
+
+    // Multi-page viewer: the API hands out the image address directly.
+    Future<(String image, String nl)> getImageFromMpvApi([String? nl]) async {
+      Res<String>? apiRes = await EhNetwork().apiRequest({
+        "gid": int.parse(gid),
+        "imgkey": gallery.auth!["imgKey"]!.split(',')[page - 1],
+        "method": "imagedispatch",
+        "page": page,
+        "mpvkey": gallery.auth!["mpvKey"],
+        if (nl != null) "nl": nl
+      });
+      var apiJson = const JsonDecoder().convert(apiRes.data);
+      return (apiJson["i"].toString(), apiJson["s"].toString());
+    }
+
+    Future<(String, String, String?)> getImageFromApi() async {
+      // get image url through api
+      Res<String>? apiRes = await EhNetwork().apiRequest({
+        "gid": int.parse(gid),
+        "imgkey": imgKey,
+        "method": "showpage",
+        "page": page,
+        "showkey": gallery.auth!["showKey"]
+      });
+
+      if (apiRes.error && apiRes.errorMessage!.contains("handshake")) {
+        throw "Failed to make api request.\n"
+            "This may be due to too frequent requests.\n"
+            "Try to wait for some time and retry.";
       }
 
-      await getShowKey();
-      assert(
-          gallery.auth?["showKey"] != null || gallery.auth?["mpvKey"] != null);
+      var apiJson = const JsonDecoder().convert(apiRes.data);
 
-      yield DownloadProgress(0, 100, cacheKey, savePath);
+      var i6 = apiJson["i6"] as String;
 
-      Response<ResponseBody>? res;
+      RegExp regex = RegExp(r"nl\('(.+?)'\)");
+      var nl = regex.firstMatch(i6)?.group(1);
 
-      var imgKey = readerLink.split('/')[4];
+      var originImage = i6.split("<a href=\"").last.split("\">").first;
 
-      int totalBytes = 0;
-      final data = BytesBuilder();
+      var image = apiJson["i3"] as String;
 
-      if (gallery.auth?["mpvKey"] != null) {
-        Future<(String image, String nl)> getImageFromApi([String? nl]) async {
-          Res<String>? apiRes = await EhNetwork().apiRequest({
-            "gid": int.parse(gid),
-            "imgkey": gallery.auth!["imgKey"]!.split(',')[page - 1],
-            "method": "imagedispatch",
-            "page": page,
-            "mpvkey": gallery.auth!["mpvKey"],
-            if (nl != null) "nl": nl
-          });
-          var apiJson = const JsonDecoder().convert(apiRes.data);
-          return (apiJson["i"].toString(), apiJson["s"].toString());
-        }
+      image = image.substring(
+          image.indexOf("src=\"") + 5, image.indexOf("\" style"));
 
-        var (image, nl) = await getImageFromApi();
-        int retryTimes = 0;
-        while (res == null) {
-          try {
-            if (image == "") {
-              throw "empty url";
-            }
-            res = await dio.get<ResponseBody>(image,
-                options: Options(responseType: ResponseType.stream));
-            if (res.data!.headers["Content-Type"]?[0] ==
-                    "text/html; charset=UTF-8" ||
-                res.data!.headers["content-type"]?[0] ==
-                    "text/html; charset=UTF-8") {
-              throw ImageExceedError();
-            }
-          } catch (e) {
-            retryTimes++;
-            if (retryTimes == 4) {
-              throw "Failed to load image.\nMaximum number of retries reached.";
-            }
-            (image, nl) = await getImageFromApi(nl);
-          }
-        }
+      return (image, originImage, nl);
+    }
+
+    Future<(String, String, String?)> getImageFromHtml() async {
+      var res = await EhNetwork().request(readerLink);
+      if (res.error) {
+        throw res.errorMessage ?? "error";
       } else {
-        Future<(String, String, String?)> getImageFromApi() async {
-          // get image url through api
-          Res<String>? apiRes = await EhNetwork().apiRequest({
-            "gid": int.parse(gid),
-            "imgkey": imgKey,
-            "method": "showpage",
-            "page": page,
-            "showkey": gallery.auth!["showKey"]
-          });
+        var document = parse(res.data);
+        var image =
+            document.querySelector("div#i3 > a > img")?.attributes["src"];
+        var nl = document
+            .querySelector("div#i6 > div > a#loadfail")
+            ?.attributes["onclick"]
+            ?.split('\'')
+            .firstWhereOrNull((element) => element.contains('-'));
+        var originImage = document
+                .querySelectorAll("div#i6 > div > a")
+                .firstWhereOrNull(
+                    (element) => element.text.contains("original"))
+                ?.attributes["href"] ??
+            "";
+        return (image ?? "", originImage, nl);
+      }
+    }
 
-          if (apiRes.error && apiRes.errorMessage!.contains("handshake")) {
-            throw "Failed to make api request.\n"
-                "This may be due to too frequent requests.\n"
-                "Try to wait for some time and retry.";
-          }
+    return _load(_ImageJob(
+      key: cacheKey,
+      reportUrl: cacheKey,
+      // The first address, then up to three others from the reload key.
+      attempts: 4,
+      exhausted: "Failed to load image.\nMaximum number of retries reached.",
+      prepare: () async {
+        dio = logDio(BaseOptions(
+            followRedirects: true,
+            connectTimeout: const Duration(seconds: 8),
+            receiveTimeout: const Duration(seconds: 20),
+            headers: {"user-agent": webUA, "cookie": EhNetwork().cookiesStr}));
 
-          var apiJson = const JsonDecoder().convert(apiRes.data);
+        readerLink = (await EhNetwork().getReaderLink(galleryLink, page)).data;
+        await getShowKey();
+        assert(gallery.auth?["showKey"] != null ||
+            gallery.auth?["mpvKey"] != null);
+        imgKey = readerLink.split('/')[4];
+        mpv = gallery.auth?["mpvKey"] != null;
 
-          var i6 = apiJson["i6"] as String;
-
-          RegExp regex = RegExp(r"nl\('(.+?)'\)");
-          var nl = regex.firstMatch(i6)?.group(1);
-
-          var originImage = i6.split("<a href=\"").last.split("\">").first;
-
-          var image = apiJson["i3"] as String;
-
-          image = image.substring(
-              image.indexOf("src=\"") + 5, image.indexOf("\" style"));
-
-          return (image, originImage, nl);
+        if (mpv) {
+          (image, nl) = await getImageFromMpvApi();
+          return;
         }
 
-        Future<(String, String, String?)> getImageFromHtml() async {
-          var res = await EhNetwork().request(readerLink);
-          if (res.error) {
-            throw res.errorMessage ?? "error";
-          } else {
-            var document = parse(res.data);
-            var image =
-                document.querySelector("div#i3 > a > img")?.attributes["src"];
-            var nl = document
-                .querySelector("div#i6 > div > a#loadfail")
-                ?.attributes["onclick"]
-                ?.split('\'')
-                .firstWhereOrNull((element) => element.contains('-'));
-            var originImage = document
-                    .querySelectorAll("div#i6 > div > a")
-                    .firstWhereOrNull(
-                        (element) => element.text.contains("original"))
-                    ?.attributes["href"] ??
-                "";
-            return (image ?? "", originImage, nl);
-          }
-        }
-
-        String image, originImage;
-        String? nl;
-
+        String originImage;
         try {
           (image, originImage, nl) = await getImageFromApi();
         } catch (e) {
           (image, originImage, nl) = await getImageFromHtml();
         }
-
         if (image.contains("509.gif")) {
           throw ImageExceedError();
         }
-
         if (appdata.settings[29] == "1" && originImage.isURL) {
           image = originImage;
         }
-
-        int retryTimes = 0;
-        var currentBytes = 0;
-
-        while (true) {
-          try {
-            data.clear();
-            cachingFile.reset();
-            if (image == "") {
-              throw "empty url";
-            }
-            res = await dio.get<ResponseBody>(image,
-                options: Options(responseType: ResponseType.stream));
-            if (res.data!.headers["Content-Type"]?[0] ==
-                    "text/html; charset=UTF-8" ||
-                res.data!.headers["content-type"]?[0] ==
-                    "text/html; charset=UTF-8") {
-              throw ImageExceedError();
-            }
-            var stream = res.data!.stream;
-            int? expectedBytes;
-            try {
-              expectedBytes =
-                  int.parse(res.data!.headers["Content-Length"]![0]);
-            } catch (e) {
-              try {
-                expectedBytes =
-                    int.parse(res.data!.headers["content-length"]![0]);
-              } finally {}
-            }
-
-            await for (var b in stream) {
-              await cachingFile.writeBytes(b);
-              currentBytes += b.length;
-              data.add(b);
-              var progress = DownloadProgress(
-                currentBytes,
-                expectedBytes + 1,
-                cacheKey,
-                savePath,
-              );
-              yield progress;
-              loadingItems[cacheKey] = progress;
-            }
-            totalBytes = currentBytes;
-            break;
-          } catch (e) {
-            retryTimes++;
-            if (retryTimes == 4) {
-              throw "Failed to load image.\nMaximum number of retries reached.";
-            }
-            if (nl == null) {
-              rethrow;
-            }
-            var (newImage, newNl) = await EhNetwork().getImageLinkWithNL(
-                getGalleryId(galleryLink), imgKey, page, nl);
-            image = newImage;
-            if (kDebugMode) {
-              print("Get new image: $image, new nl $newNl");
-            }
-            if (newNl != null) {
-              nl = newNl;
-            }
-          }
+      },
+      request: () async {
+        if (image == "") {
+          throw "empty url";
         }
-      }
-
-      await cachingFile.close();
-      var bytes = data.takeBytes();
-      var ext = detectFileType(bytes).ext.replaceFirst(('.'), '');
-      CacheManager().setType(key, ext);
-      yield DownloadProgress(
-        totalBytes,
-        totalBytes,
-        cacheKey,
-        savePath,
-        bytes,
-        ext,
-      );
-    } catch (e, s) {
-      caching?.cancel();
-      LogManager.addLog(LogLevel.error, "Network", "$e\n$s");
-      if (e is DioException && e.type == DioExceptionType.badResponse) {
-        var statusCode = e.response?.statusCode;
-        if (statusCode != null && statusCode >= 400 && statusCode < 500) {
-          throw BadRequestException(e.message.toString());
+        var res = await dio.get<ResponseBody>(image,
+            options: Options(responseType: ResponseType.stream));
+        _refuseHtml(res);
+        return res;
+      },
+      beforeRetry: (error) async {
+        if (mpv) {
+          (image, nl) = await getImageFromMpvApi(nl);
+          return true;
         }
-      }
-      rethrow;
-    } finally {
-      // Also runs when the listener cancels: drop the partial file.
-      caching?.cancel();
-      loadingItems.remove(cacheKey);
-    }
+        if (nl == null) {
+          return false;
+        }
+        var (newImage, newNl) = await EhNetwork()
+            .getImageLinkWithNL(getGalleryId(galleryLink), imgKey, page, nl!);
+        image = newImage;
+        if (kDebugMode) {
+          print("Get new image: $image, new nl $newNl");
+        }
+        if (newNl != null) {
+          nl = newNl;
+        }
+        return true;
+      },
+      ext: (bytes) => detectFileType(bytes).ext.replaceFirst(('.'), ''),
+    ));
   }
 
   ///为Hitomi设计的图片加载函数
   ///
   /// 使用hash标识图片
-  Stream<DownloadProgress> getHitomiImage(
-      HitomiFile image, String galleryId) async* {
-    await wait(image.hash);
-    loadingItems[image.hash] = DownloadProgress(0, 1, image.hash, "");
-    CachingFile? caching;
-
-    try {
-      final key = image.hash;
-      var cache = await CacheManager().findCache(key);
-      if (cache != null) {
-        yield DownloadProgress(
-            1, 1, key, cache, null, CacheManager().getType(key));
-        loadingItems.remove(key);
-        return;
-      }
-
-      final cachingFile = await CacheManager().openWrite(key);
-      caching = cachingFile;
-      final savePath = cachingFile.file.path;
-      yield DownloadProgress(0, 100, key, savePath);
-
-      final gg = GG();
-      var url = await gg.urlFromUrlFromHash(galleryId, image, 'webp', null);
-      int l;
-      for (l = url.length - 1; l >= 0; l--) {
-        if (url[l] == '.') {
-          break;
-        }
-      }
-      var dio = logDio();
-      dio.options.headers = {
-        "User-Agent": webUA,
-        "Referer": "https://hitomi.la/reader/$galleryId.html"
-      };
-
-      var res = await dio.get<ResponseBody>(url,
-          options: Options(responseType: ResponseType.stream));
-      var stream = res.data!.stream;
-      int? expectedBytes;
-      try {
-        expectedBytes = int.parse(res.data!.headers["Content-Length"]![0]);
-      } catch (e) {
-        try {
-          expectedBytes = int.parse(res.data!.headers["content-length"]![0]);
-        } catch (e) {
-          //忽视
-        }
-      }
-      var currentBytes = 0;
-      final data = BytesBuilder();
-      await for (var b in stream) {
-        data.add(b);
-        await cachingFile.writeBytes(b);
-        currentBytes += b.length;
-        var progress = DownloadProgress(
-            currentBytes, (expectedBytes ?? currentBytes + 1), url, savePath);
-        yield progress;
-        loadingItems[image.hash] = progress;
-      }
-      await cachingFile.close();
-      var ext = getExt(res);
-      CacheManager().setType(key, ext);
-      yield DownloadProgress(currentBytes, currentBytes, url, savePath,
-          data.takeBytes(), ext);
-    } catch (e) {
-      caching?.cancel();
-      if (e is DioException && e.type == DioExceptionType.badResponse) {
-        var statusCode = e.response?.statusCode;
-        if (statusCode != null && statusCode >= 400 && statusCode < 500) {
-          throw BadRequestException(e.message.toString());
-        }
-      }
-      rethrow;
-    } finally {
-      // Also runs when the listener cancels: drop the partial file.
-      caching?.cancel();
-      loadingItems.remove(image.hash);
-    }
+  Stream<DownloadProgress> getHitomiImage(HitomiFile image, String galleryId) {
+    late final String url;
+    return _load(_ImageJob(
+      key: image.hash,
+      reportUrl: image.hash,
+      prepare: () async {
+        url = await GG().urlFromUrlFromHash(galleryId, image, 'webp', null);
+      },
+      request: () {
+        var dio = logDio();
+        dio.options.headers = {
+          "User-Agent": webUA,
+          "Referer": "https://hitomi.la/reader/$galleryId.html"
+        };
+        return dio.get<ResponseBody>(url,
+            options: Options(responseType: ResponseType.stream));
+      },
+    ));
   }
 
   ///获取禁漫图片, 如果缓存中没有, 则尝试下载
   Stream<DownloadProgress> getJmImage(String url, Map<String, String>? headers,
       {required String epsId,
       required String scrambleId,
-      required String bookId}) async* {
+      required String bookId}) {
     bookId = bookId.replaceAll(RegExp(r"\..+"), "");
     final urlWithoutParam = url.replaceAll(RegExp(r"\?.+"), "");
-    await wait(urlWithoutParam);
-    loadingItems[urlWithoutParam] = DownloadProgress(0, 1, url, "");
-    CachingFile? caching;
 
-    try {
-      final key = urlWithoutParam;
-      var cache = await CacheManager().findCache(key);
-      if (cache != null) {
-        yield DownloadProgress(1, 1, url, cache);
-        loadingItems.remove(url);
-        return;
-      }
-
-      final cachingFile = await CacheManager().openWrite(key);
-      caching = cachingFile;
-      final savePath = cachingFile.file.path;
-      yield DownloadProgress(0, 1, url, savePath);
-
-      var dio = logDio();
-
-      final received = BytesBuilder();
-      String? ext;
-      try {
-        var res = await dio.get<ResponseBody>(
-            url,
-            options: Options(
-                responseType: ResponseType.stream,
-                headers: getImgHeaders()
-            )
-        );
-        ext = getExt(res);
-        var stream = res.data!.stream;
-        await for (var b in stream) {
-          //不直接写入文件, 因为需要对图片进行重组, 处理完成后再写入
-          received.add(b);
-          //构建虚假的进度条, 因为无法获取jm文件大小
-          var total = max(1 << 20, received.length + 1);
-          var progress = DownloadProgress(received.length, total, url, savePath);
-          yield progress;
-          loadingItems[urlWithoutParam] = progress;
-        }
-      } catch (e) {
-        rethrow;
-      }
-      var bytes = received.takeBytes();
-      var progress = DownloadProgress(
-        bytes.length,
-        (bytes.length / 0.75).toInt(),
-        url,
-        savePath,
-      );
-      yield progress;
-      loadingItems[urlWithoutParam] = progress;
-      if (url.split('.').last != "gif") {
-        bytes = await startRecombineAndWriteImage(
-            bytes, epsId, scrambleId, bookId, savePath);
-      }
-      await cachingFile.writeBytes(bytes);
-      await cachingFile.close();
-      CacheManager().setType(key, ext);
-      progress = DownloadProgress(
-        bytes.length,
-        bytes.length,
-        url,
-        savePath,
-        bytes,
-        ext,
-      );
-      yield progress;
-    } catch (e) {
-      caching?.cancel();
-      if (e is DioException && e.type == DioExceptionType.badResponse) {
-        var statusCode = e.response?.statusCode;
-        if (statusCode != null && statusCode >= 400 && statusCode < 500) {
-          throw BadRequestException(e.message.toString());
-        }
-      }
-      rethrow;
-    } finally {
-      // Also runs when the listener cancels: drop the partial file.
-      caching?.cancel();
-      loadingItems.remove(urlWithoutParam);
-    }
+    return _load(_ImageJob(
+      key: urlWithoutParam,
+      reportUrl: url,
+      request: () => logDio().get<ResponseBody>(url,
+          options: Options(
+              responseType: ResponseType.stream, headers: getImgHeaders())),
+      // 无法获取jm文件大小, 构建虚假的进度条
+      sizeWhileLoading: (received, _) => max(1 << 20, received + 1),
+      // 需要对图片进行重组, 处理完成后再写入
+      transform: url.split('.').last == "gif"
+          ? null
+          : (bytes, savePath) => startRecombineAndWriteImage(
+              bytes, epsId, scrambleId, bookId, savePath),
+    ));
   }
 
   Stream<DownloadProgress> getCustomImage(
-      String url, String comicId, String epId, String sourceKey) async* {
-    var cacheKey = "$sourceKey$comicId$epId$url";
-    await wait(cacheKey);
-    loadingItems[cacheKey] = DownloadProgress(0, 1, cacheKey, "");
+      String url, String comicId, String epId, String sourceKey) {
+    return _loadWithConfig(
+      "$sourceKey$comicId$epId$url",
+      url,
+      sourceKey,
+      (source) => source.getImageLoadingConfig?.call(url, comicId, epId),
+    );
+  }
 
-    var cache = await CacheManager().findCache(cacheKey);
-    if (cache != null) {
-      yield DownloadProgress(1, 1, cacheKey, cache);
-      loadingItems.remove(cacheKey);
-      return;
-    }
+  Stream<DownloadProgress> getCustomThumbnail(String url, String sourceKey,
+      [Map<String, String>? headers]) {
+    return _loadWithConfig(
+      "$sourceKey$url",
+      url,
+      sourceKey,
+      (source) => source.getThumbnailLoadingConfig?.call(url),
+      headers: headers,
+      storeType: false,
+    );
+  }
 
-    CachingFile? caching;
-
-    var source = ComicSource.find(sourceKey) ??
-        (throw "Unknown Comic Source $sourceKey");
-
-    try {
-      Map<String, dynamic> config;
-
-      if (source.getImageLoadingConfig == null) {
-        config = {};
-      } else {
-        config = source.getImageLoadingConfig!(url, comicId, epId);
+  /// An image whose request is described by the comic source: address,
+  /// method, headers, and optionally a function that rewrites the bytes.
+  Stream<DownloadProgress> _loadWithConfig(
+    String cacheKey,
+    String url,
+    String sourceKey,
+    Map<String, dynamic>? Function(ComicSource source) getConfig, {
+    Map<String, String>? headers,
+    bool storeType = true,
+  }) {
+    // Resolved by the first step that needs it, after the cache was asked.
+    late final Map<String, dynamic> config = () {
+      var source = ComicSource.find(sourceKey) ??
+          (throw "Unknown Comic Source $sourceKey");
+      var config = getConfig(source) ?? <String, dynamic>{};
+      if (headers != null) {
+        config['headers'] ??= headers;
       }
+      return config;
+    }();
 
-      caching = await CacheManager().openWrite(cacheKey);
-      final savePath = caching.file.path;
-
-      var res = await dio.request<ResponseBody>(config['url'] ?? url,
+    late final _ImageJob job;
+    job = _ImageJob(
+      key: cacheKey,
+      reportUrl: url,
+      storeType: storeType,
+      prepare: () async {
+        if (config['onResponse'] == null) return;
+        job.transform = (bytes, _) {
+          var data = (config['onResponse'] as JSInvokable)(bytes);
+          if (data is! Uint8List) {
+            throw "Invalid Config: onImageLoad.onResponse return invalid type\n"
+                "Expected: Uint8List(ArrayBuffer)\n"
+                "Got: ${data.runtimeType}";
+          }
+          return data;
+        };
+      },
+      request: () => dio.request<ResponseBody>(config['url'] ?? url,
           data: config['data'],
           options: Options(
               method: config['method'] ?? 'GET',
               headers: config['headers'] ?? {'user-agent': webUA},
-              responseType: ResponseType.stream));
-
-      final imageData = BytesBuilder();
-
-      int? expectedBytes = res.data!.contentLength;
-      if (expectedBytes == -1) {
-        expectedBytes = null;
-      }
-
-      bool shouldModifyData = config['onResponse'] != null;
-
-      await for (var data in res.data!.stream) {
-        if (!shouldModifyData) {
-          await caching.writeBytes(data);
-        }
-        imageData.add(data);
-        var progress = DownloadProgress(
-          imageData.length,
-          (expectedBytes ?? imageData.length + 1),
-          url,
-          savePath,
-        );
-        yield progress;
-        loadingItems[cacheKey] = progress;
-      }
-
-      Uint8List? result;
-
-      if (shouldModifyData) {
-        var data = (config['onResponse']
-            as JSInvokable)(imageData.toBytes());
-        imageData.clear();
-        if (data is! Uint8List) {
-          throw "Invalid Config: onImageLoad.onResponse return invalid type\n"
-              "Expected: Uint8List(ArrayBuffer)\n"
-              "Got: ${data.runtimeType}";
-        }
-        result = data;
-        await caching.writeBytes(data);
-      }
-
-      var ext = getExt(res);
-      CacheManager().setType(cacheKey, ext);
-      await caching.close();
-      var length = result?.length ?? imageData.length;
-      yield DownloadProgress(
-        length,
-        length,
-        url,
-        savePath,
-        result ?? imageData.takeBytes(),
-        ext,
-      );
-    } catch (e) {
-      caching?.cancel();
-      if (e is DioException && e.type == DioExceptionType.badResponse) {
-        var statusCode = e.response?.statusCode;
-        if (statusCode != null && statusCode >= 400 && statusCode < 500) {
-          throw BadRequestException(e.message.toString());
-        }
-      }
-      rethrow;
-    } finally {
-      // Also runs when the listener cancels: drop the partial file.
-      caching?.cancel();
-      loadingItems.remove(cacheKey);
-    }
+              responseType: ResponseType.stream)),
+    );
+    return _load(job);
   }
 
   Future<void> wait(String cacheKey) {
@@ -751,100 +549,6 @@ class ImageManager {
       }
       return loadingItems[cacheKey] != null;
     });
-  }
-
-  Stream<DownloadProgress> getCustomThumbnail(
-      String url, String sourceKey, [Map<String, String>? headers]) async* {
-    var cacheKey = "$sourceKey$url";
-    await wait(cacheKey);
-    loadingItems[cacheKey] = DownloadProgress(0, 1, cacheKey, "");
-
-    var cache = await CacheManager().findCache(cacheKey);
-    if (cache != null) {
-      yield DownloadProgress(1, 1, cacheKey, cache);
-      loadingItems.remove(cacheKey);
-      return;
-    }
-
-    CachingFile? caching;
-
-    var source = ComicSource.find(sourceKey) ??
-        (throw "Unknown Comic Source $sourceKey");
-
-    try {
-      Map<String, dynamic> config;
-
-      if (source.getThumbnailLoadingConfig == null) {
-        config = {};
-      } else {
-        config = source.getThumbnailLoadingConfig!(url);
-      }
-
-      config['headers'] ??= headers;
-
-      caching = await CacheManager().openWrite(cacheKey);
-      final savePath = caching.file.path;
-
-      var res = await dio.request<ResponseBody>(config['url'] ?? url,
-          data: config['data'],
-          options: Options(
-              method: config['method'] ?? 'GET',
-              headers: config['headers'] ?? {'user-agent': webUA},
-              responseType: ResponseType.stream));
-
-      final imageData = BytesBuilder();
-
-      int? expectedBytes = res.data!.contentLength;
-      if (expectedBytes == -1) {
-        expectedBytes = null;
-      }
-
-      bool shouldModifyData = config['onResponse'] != null;
-
-      await for (var data in res.data!.stream) {
-        if (!shouldModifyData) {
-          await caching.writeBytes(data);
-        }
-        imageData.add(data);
-        var progress = DownloadProgress(imageData.length,
-            expectedBytes ?? (imageData.length + 1), url, savePath);
-        yield progress;
-        loadingItems[cacheKey] = progress;
-      }
-
-      Uint8List? result;
-
-      if (shouldModifyData) {
-        var data = (config['onResponse']
-            as JSInvokable)(imageData.toBytes());
-        imageData.clear();
-        if (data is! Uint8List) {
-          throw "Invalid Config: onImageLoad.onResponse return invalid type\n"
-              "Expected: Uint8List(ArrayBuffer)\n"
-              "Got: ${data.runtimeType}";
-        }
-        result = data;
-        await caching.writeBytes(data);
-      }
-
-      await caching.close();
-      yield DownloadProgress(
-          1, 1, url, savePath, result ?? imageData.takeBytes());
-    } catch (e) {
-      Log.error("Network", "Failed to load a image:\nUrl:$url\nError:$e");
-      caching?.cancel();
-      if (e is DioException && e.type == DioExceptionType.badResponse) {
-        var statusCode = e.response?.statusCode;
-        if (statusCode != null && statusCode >= 400 && statusCode < 500) {
-          throw BadRequestException(e.message.toString());
-        }
-      }
-      rethrow;
-    } finally {
-      // Also runs when the listener cancels: drop the partial file.
-      caching?.cancel();
-      loadingItems.remove(cacheKey);
-    }
   }
 
   Future<File?> getFile(String key) async {
@@ -893,6 +597,72 @@ class ImageManager {
     }
     return ext;
   }
+}
+
+/// What differs between the kinds of image. Everything else is shared in
+/// [ImageManager._load].
+class _ImageJob {
+  _ImageJob({
+    required this.key,
+    required this.reportUrl,
+    required this.request,
+    this.prepare,
+    this.attempts = 1,
+    this.beforeRetry,
+    this.exhausted,
+    this.transform,
+    this.ext,
+    this.storeType = true,
+    this.sizeWhileLoading = _knownOrGrowing,
+    this.onDone,
+  });
+
+  /// Cache key. Also marks the image as being loaded.
+  final String key;
+
+  /// Reported as [DownloadProgress.url].
+  final String reportUrl;
+
+  /// Runs once after a cache miss and before the first request, e.g. to
+  /// find out the address of the image.
+  final Future<void> Function()? prepare;
+
+  /// Opens the image. Called once per attempt.
+  final Future<Response<ResponseBody>> Function() request;
+
+  /// How many times [request] may be tried.
+  final int attempts;
+
+  /// Runs after a failed attempt that is not the last one, e.g. to get
+  /// another address. Returning false gives up with the error of that
+  /// attempt. Without it there are no retries.
+  final Future<bool> Function(Object error)? beforeRetry;
+
+  /// Thrown when every attempt failed; the last error when null.
+  final Object? exhausted;
+
+  /// Rewrites the downloaded bytes before they are cached. When set, nothing
+  /// is written to the cache file until the download is complete.
+  FutureOr<Uint8List> Function(Uint8List bytes, String savePath)? transform;
+
+  /// File type of the image; from the response headers and address when null.
+  final String? Function(Uint8List bytes)? ext;
+
+  /// Whether the file type is stored with the cache entry and reported.
+  final bool storeType;
+
+  /// Total size to report while [received] bytes have arrived.
+  final int Function(int received, int? contentLength) sizeWhileLoading;
+
+  /// Runs when the load ends, however it ends.
+  final void Function()? onDone;
+
+  /// The announced size, but never equal to what has arrived: only the last
+  /// event of a load may look finished.
+  static int _knownOrGrowing(int received, int? contentLength) =>
+      contentLength != null && contentLength > received
+          ? contentLength
+          : received + 1;
 }
 
 class DownloadProgress {

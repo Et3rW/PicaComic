@@ -1,0 +1,66 @@
+{
+ "search_query": "touhou",
+ "search_type": "site",
+ "y": 0,
+ "m": 0,
+ "total": 148,
+ "content": [
+  {
+   "id": "1490554",
+   "author": "作者1",
+   "description": "",
+   "name": "样本标题1",
+   "image": "",
+   "category": {
+    "id": "1",
+    "title": "同人"
+   },
+   "category_sub": {
+    "id": "1",
+    "title": "同人"
+   },
+   "liked": false,
+   "is_favorite": false,
+   "update_at": 1794554514,
+   "adddate": "2026-11-13"
+  },
+  {
+   "id": "1487665",
+   "author": "作者2",
+   "description": "",
+   "name": "样本标题2",
+   "image": "",
+   "category": {
+    "id": "1",
+    "title": "同人"
+   },
+   "category_sub": {
+    "id": "1",
+    "title": "同人"
+   },
+   "liked": false,
+   "is_favorite": false,
+   "update_at": 1793606686,
+   "adddate": "2026-11-02"
+  },
+  {
+   "id": "1478182",
+   "author": "作者3",
+   "description": "",
+   "name": "样本标题3",
+   "image": "",
+   "category": {
+    "id": "1",
+    "title": "同人"
+   },
+   "category_sub": {
+    "id": "1",
+    "title": "同人"
+   },
+   "liked": false,
+   "is_favorite": false,
+   "update_at": 1790847683,
+   "adddate": "2026-10-01"
+  }
+ ]
+}

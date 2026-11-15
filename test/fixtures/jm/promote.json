@@ -1,0 +1,131 @@
+[
+ {
+  "id": "26",
+  "title": "連載更新→右滑看更多→",
+  "slug": "",
+  "type": "promote",
+  "filter_val": "26",
+  "content": [
+   {
+    "id": "1225495",
+    "author": "作者1",
+    "name": "样本标题1",
+    "image": "",
+    "category": {
+     "id": "5",
+     "title": "韓漫"
+    },
+    "category_sub": {
+     "id": null,
+     "title": null
+    },
+    "liked": false,
+    "is_favorite": false,
+    "update_at": 1794753548
+   },
+   {
+    "id": "1100551",
+    "author": "作者2",
+    "name": "样本标题2",
+    "image": "",
+    "category": {
+     "id": "5",
+     "title": "韓漫"
+    },
+    "category_sub": {
+     "id": null,
+     "title": null
+    },
+    "liked": false,
+    "is_favorite": false,
+    "update_at": 1794753394
+   }
+  ]
+ },
+ {
+  "id": "29",
+  "title": "C108&推薦本本",
+  "slug": "",
+  "type": "promote",
+  "filter_val": "29",
+  "content": [
+   {
+    "id": "1490921",
+    "author": "作者1",
+    "name": "样本标题1",
+    "image": "",
+    "category": {
+     "id": "2",
+     "title": "單本"
+    },
+    "category_sub": {
+     "id": "5",
+     "title": "韓漫"
+    },
+    "liked": false,
+    "is_favorite": false,
+    "update_at": 1794726162
+   },
+   {
+    "id": "1490755",
+    "author": "作者2",
+    "name": "样本标题2",
+    "image": "",
+    "category": {
+     "id": "1",
+     "title": "同人"
+    },
+    "category_sub": {
+     "id": "1",
+     "title": "同人"
+    },
+    "liked": false,
+    "is_favorite": false,
+    "update_at": 1794648489
+   }
+  ]
+ },
+ {
+  "id": "30",
+  "title": "禁漫去碼&全彩化",
+  "slug": "",
+  "type": "promote",
+  "filter_val": "30",
+  "content": [
+   {
+    "id": "1488422",
+    "author": "作者1",
+    "name": "样本标题1",
+    "image": "",
+    "category": {
+     "id": "1",
+     "title": "同人"
+    },
+    "category_sub": {
+     "id": "1",
+     "title": "同人"
+    },
+    "liked": false,
+    "is_favorite": false,
+    "update_at": 1794567367
+   },
+   {
+    "id": "1485993",
+    "author": "作者2",
+    "name": "样本标题2",
+    "image": "",
+    "category": {
+     "id": "1",
+     "title": "同人"
+    },
+    "category_sub": {
+     "id": "1",
+     "title": "同人"
+    },
+    "liked": false,
+    "is_favorite": false,
+    "update_at": 1793783612
+   }
+  ]
+ }
+]

@@ -16,6 +16,12 @@ jobs:
       FLUTTER_SUPPRESS_ANALYTICS: 'true'
     steps:
       - uses: actions/checkout@v4
+      - name: Read version from pubspec.yaml
+        run: |
+          version=$(sed -n 's/^version:[[:space:]]*//p' pubspec.yaml | head -n 1)
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+\+[0-9]+$ ]] || { echo "Unexpected version: $version"; exit 1; }
+          echo "APP_VERSION=${version%%+*}" >> "$GITHUB_ENV"
+          echo "APP_BUILD=${version##*+}" >> "$GITHUB_ENV"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -27,36 +33,28 @@ jobs:
           cache: true
       - name: Install locked dependencies
         run: flutter pub get --enforce-lockfile
-      - name: Regression tests
-        run: >-
-          flutter test --no-pub
-          test/nhentai_login_flow_test.dart
-          test/nhentai_page_parser_test.dart
-          test/nhentai_list_tags_test.dart
-          test/nhentai_sort_pagination_test.dart
-          test/cookie_logout_test.dart
-          test/network_log_redaction_test.dart
-          test/jm_login_flow_test.dart
-          test/account_login_page_test.dart
-          test/nhentai_tag_query_test.dart
-          test/nhentai_tag_stack_page_test.dart
-          test/nhentai_default_excludes_test.dart
-          test/cache_manager_test.dart
+      - name: Tests
+        run: flutter test --no-pub
       - name: Build release-mode test APK
         run: flutter build apk --release --no-pub --target-platform android-arm64,android-x64
       - name: Verify and package APK
         shell: bash
         run: |
           mkdir -p dist
-          cp build/app/outputs/flutter-apk/app-release.apk dist/PicaComic-5.1.7-test.apk
+          apk="PicaComic-$APP_VERSION-test.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk "dist/$apk"
           build_tools=$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)
-          "$ANDROID_HOME/build-tools/$build_tools/apksigner" verify --verbose dist/PicaComic-5.1.7-test.apk
-          "$ANDROID_HOME/build-tools/$build_tools/aapt" dump badging dist/PicaComic-5.1.7-test.apk
+          "$ANDROID_HOME/build-tools/$build_tools/apksigner" verify --verbose "dist/$apk"
+          badging=$("$ANDROID_HOME/build-tools/$build_tools/aapt" dump badging "dist/$apk")
+          echo "$badging"
+          # The test app must install next to the released one, never over it.
+          expected="package: name='com.github.pacalini.pica_comic.test${APP_VERSION//./}' versionCode='$APP_BUILD' versionName='$APP_VERSION'"
+          grep -qF "$expected" <<< "$badging" || { echo "Unexpected package/version, wanted: $expected"; exit 1; }
           cd dist
-          sha256sum PicaComic-5.1.7-test.apk > SHA256SUMS.txt
+          sha256sum "$apk" > SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: PicaComic-5.1.7-test-apk
+          name: PicaComic-${{ env.APP_VERSION }}-test-apk
           path: dist/
           if-no-files-found: error
           retention-days: 30
