@@ -16,6 +16,7 @@ import 'package:pica_comic/pages/ehentai/accounts.dart';
 import 'package:pica_comic/pages/ehentai/eh_gallery_page.dart';
 import 'package:pica_comic/pages/ehentai/eh_login_page.dart';
 import 'package:pica_comic/pages/reader/comic_reading_page.dart';
+import 'package:pica_comic/pages/search_result_page.dart';
 import 'package:pica_comic/tools/tags_translation.dart';
 import 'package:pica_comic/tools/translations.dart';
 
@@ -335,6 +336,7 @@ class _EhGalleryTile extends ComicTile {
 
   @override
   void onTap_() {
+    SearchPageContext.onComicOpened('ehentai', gallery.link);
     App.mainNavigatorKey!.currentContext!.to(
       () => ComicPage(
         sourceKey: 'ehentai',

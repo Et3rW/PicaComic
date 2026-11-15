@@ -1,3 +1,6 @@
+// These are tests, but outside test/ so the normal run skips them.
+// ignore_for_file: invalid_use_of_visible_for_testing_member
+
 // Checks every built-in source against the real site.
 //
 // Not part of the normal test run (it lives outside test/): it needs network

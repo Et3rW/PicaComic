@@ -8,7 +8,10 @@ import 'package:pica_comic/components/components.dart';
 import 'package:pica_comic/foundation/app.dart';
 import 'package:pica_comic/foundation/pair.dart';
 import 'package:pica_comic/network/base_comic.dart';
+import 'package:pica_comic/network/eh_network/tag_settings.dart';
+import 'package:pica_comic/network/eh_network/tag_stack.dart';
 import 'package:pica_comic/network/res.dart';
+import 'package:pica_comic/pages/ehentai/tag_stack_bar.dart';
 import 'package:pica_comic/tools/extensions.dart';
 import 'package:pica_comic/tools/tags_translation.dart';
 import 'package:pica_comic/tools/translations.dart';
@@ -43,6 +46,52 @@ class _SearchPageComicList extends ComicsPage<BaseComic> {
 
   @override
   String? get title => null;
+}
+
+/// Remembers which search a comic was opened from, so that its page can
+/// refine that search: e-hentai stacks tapped tags onto it.
+class SearchPageContext {
+  SearchPageContext._();
+
+  static final _pages = <_SearchResultPageState>[];
+
+  /// Per comic, the searches it was opened from, oldest first. Closing a
+  /// search page drops only its own entries.
+  static final _comics = <String, List<(_SearchResultPageState?, String)>>{};
+
+  static const _maxEntriesPerComic = 8;
+
+  /// Called when a comic is opened. Records the keyword of the search page
+  /// of [sourceKey] that is currently on top, or that there is none.
+  static void onComicOpened(String sourceKey, String comicId) {
+    _SearchResultPageState? current;
+    for (var page in _pages.reversed) {
+      if (page.mounted &&
+          page.sourceKey == sourceKey &&
+          ModalRoute.of(page.context)?.isCurrent == true) {
+        current = page;
+        break;
+      }
+    }
+    var entries = _comics.putIfAbsent('$sourceKey:$comicId', () => []);
+    entries.add((current, current?.keyword ?? ''));
+    if (entries.length > _maxEntriesPerComic) entries.removeAt(0);
+  }
+
+  /// Keyword of the search [comicId] was last opened from; null if it was
+  /// opened from somewhere else.
+  static String? keywordForComic(String sourceKey, String comicId) {
+    var entry = _comics['$sourceKey:$comicId']?.lastOrNull;
+    return entry == null || entry.$1 == null ? null : entry.$2;
+  }
+
+  static void _unregister(_SearchResultPageState page) {
+    _pages.remove(page);
+    for (var entries in _comics.values) {
+      entries.removeWhere((e) => identical(e.$1, page));
+    }
+    _comics.removeWhere((_, entries) => entries.isEmpty);
+  }
 }
 
 class SearchResultPage extends StatelessWidget {
@@ -124,15 +173,37 @@ class _SearchResultPageState extends State<_SearchResultPage> {
       }
     }
     suggestionsController = _SuggestionsController(controller);
+    SearchPageContext._pages.add(this);
     super.initState();
   }
 
   @override
   void dispose() {
+    SearchPageContext._unregister(this);
     if (suggestionOverlay != null) {
       suggestionsController.remove();
     }
     super.dispose();
+  }
+
+  /// Tags of a stacked e-hentai search, shown as chips under the search bar.
+  /// A search for a single tag looks as it always did.
+  List<EhTagTerm>? get stackedTerms {
+    if (sourceKey != 'ehentai' || !EhTagSettings.stackEnabled) return null;
+    var terms = ehTermsFromKeyword(keyword);
+    return terms == null || terms.length < 2 ? null : terms;
+  }
+
+  void removeStackedTerm(EhTagTerm term) {
+    var rest = [
+      for (var t in ehTermsFromKeyword(keyword) ?? const <EhTagTerm>[])
+        if (!t.sameTarget(term)) t,
+    ];
+    var next = ehKeywordFromTerms(rest);
+    controller.text = next;
+    setState(() {
+      keyword = next;
+    });
   }
 
   void onChanged(String s) {
@@ -198,6 +269,23 @@ class _SearchResultPageState extends State<_SearchResultPage> {
       );
     }
 
+    final stackedTerms = this.stackedTerms;
+    final headerHeight =
+        stackedTerms == null ? 60.0 : 60.0 + EhTagStackBar.height;
+    final searchBar = FloatingSearchBar(
+      onSearch: (s) {
+        suggestionsController.suggestions.clear();
+        suggestionsController.remove();
+        if (s == keyword) return;
+        setState(() {
+          keyword = s;
+        });
+      },
+      controller: controller,
+      onChanged: onChanged,
+      trailing: trailing,
+    );
+
     return Scaffold(
       floatingActionButton: _showFab
           ? FloatingActionButton(
@@ -236,21 +324,22 @@ class _SearchResultPageState extends State<_SearchResultPage> {
             pinned: _showFab && SmoothScrollProvider.isMouseScroll,
             floating: !SmoothScrollProvider.isMouseScroll,
             delegate: _SliverAppBarDelegate(
-              minHeight: 60,
-              maxHeight: 60,
-              child: FloatingSearchBar(
-                onSearch: (s) {
-                  suggestionsController.suggestions.clear();
-                  suggestionsController.remove();
-                  if (s == keyword) return;
-                  setState(() {
-                    keyword = s;
-                  });
-                },
-                controller: controller,
-                onChanged: onChanged,
-                trailing: trailing,
-              ),
+              minHeight: headerHeight,
+              maxHeight: headerHeight,
+              child: stackedTerms == null
+                  ? searchBar
+                  : Material(
+                      color: context.colorScheme.surface,
+                      child: Column(
+                        children: [
+                          SizedBox(height: 60, child: searchBar),
+                          EhTagStackBar(
+                            terms: stackedTerms,
+                            onRemove: removeStackedTerm,
+                          ),
+                        ],
+                      ),
+                    ),
             ),
           ),
           options: options,

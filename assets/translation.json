@@ -1,5 +1,6 @@
 {
   "zh_TW": {
+    "在标签搜索结果里打开画廊, 再点标签会和搜索里的标签一起搜索, 最多 @n 个": "在標籤搜尋結果裡打開畫廊, 再點標籤會和搜尋裡的標籤一起搜尋, 最多 @n 個",
     "在分类或标签页里打开漫画, 再点标签会和页面上的标签一起搜索, 最多 @n 个": "在分類或標籤頁裡打開漫畫, 再點標籤會和頁面上的標籤一起搜尋, 最多 @n 個",
     "已排除 @n 个标签": "已排除 @n 個標籤",
     "最多同时 @n 个标签": "最多同時 @n 個標籤",
@@ -585,6 +586,7 @@
     "请勿反馈相关问题": "請勿回饋相關問題"
   },
   "en_US": {
+    "在标签搜索结果里打开画廊, 再点标签会和搜索里的标签一起搜索, 最多 @n 个": "When a gallery is opened from a tag search, tapping its tags searches them together with the tags of that search (up to @n)",
     "在分类或标签页里打开漫画, 再点标签会和页面上的标签一起搜索, 最多 @n 个": "When a comic is opened from a category or tag page, tapping its tags searches them together with the page's tags (up to @n)",
     "已排除 @n 个标签": "@n tags excluded",
     "最多同时 @n 个标签": "At most @n tags at once",

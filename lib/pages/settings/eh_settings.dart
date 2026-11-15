@@ -33,6 +33,21 @@ class _EhSettingsState extends State<EhSettings> {
           ),
           //onTap: () => setEhDomain(context),
         ),
+        ValueListenableBuilder(
+          valueListenable: EhTagSettings.changes,
+          builder: (context, _, __) => ListTile(
+            leading: const Icon(Icons.layers_outlined),
+            title: Text("点标签时叠加到当前标签".tl),
+            subtitle: Text("在标签搜索结果里打开画廊, 再点标签会和搜索里的标签一起搜索, 最多 @n 个"
+                .tlParams({"n": "$ehTagStackLimit"})),
+            trailing: Switch(
+              value: EhTagSettings.stackEnabled,
+              onChanged: (v) => EhTagSettings.setStackEnabled(v),
+            ),
+            onTap: () =>
+                EhTagSettings.setStackEnabled(!EhTagSettings.stackEnabled),
+          ),
+        ),
         ListTile(
           leading: const Icon(Icons.image),
           title: Text("优先加载原图".tl),
