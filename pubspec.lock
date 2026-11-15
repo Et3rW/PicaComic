@@ -133,9 +133,9 @@ packages:
     dependency: "direct main"
     description:
       path: "packages/desktop_webview_window"
-      ref: "7801fc5"
+      ref: "7801fc582ecf5a7351632887891ecf309a7b2583"
       resolved-ref: "7801fc582ecf5a7351632887891ecf309a7b2583"
-      url: "https://github.com/wgh136/flutter_desktop_webview"
+      url: "https://github.com/Et3rW/flutter_desktop_webview"
     source: git
     version: "0.2.4"
   dio:
@@ -400,9 +400,9 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: "8feae95"
+      ref: "8feae95df7fb00455df129ad7a0dfec1d0e8d8e4"
       resolved-ref: "8feae95df7fb00455df129ad7a0dfec1d0e8d8e4"
-      url: "https://github.com/wgh136/flutter_qjs"
+      url: "https://github.com/Et3rW/flutter_qjs"
     source: git
     version: "0.3.7"
   flutter_reorderable_grid_view:
@@ -422,9 +422,9 @@ packages:
     dependency: "direct dev"
     description:
       path: "."
-      ref: HEAD
+      ref: "15bfead0380fda79b0256b37c73b886b0882f1bf"
       resolved-ref: "15bfead0380fda79b0256b37c73b886b0882f1bf"
-      url: "https://github.com/wgh136/flutter_to_arch"
+      url: "https://github.com/Et3rW/flutter_to_arch"
     source: git
     version: "1.0.0"
   flutter_web_plugins:
@@ -748,9 +748,9 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: a1255d1
+      ref: a1255d1b5945aad4b7323303ec2ecdf0c90ffc4c
       resolved-ref: a1255d1b5945aad4b7323303ec2ecdf0c90ffc4c
-      url: "https://github.com/wgh136/photo_view"
+      url: "https://github.com/Et3rW/photo_view"
     source: git
     version: "0.14.0"
   platform:
@@ -1074,9 +1074,9 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: main
+      ref: f2875f9327dabea1732373fb8b24a71917360f46
       resolved-ref: f2875f9327dabea1732373fb8b24a71917360f46
-      url: "https://github.com/wgh136/webdav_client"
+      url: "https://github.com/Et3rW/webdav_client"
     source: git
     version: "1.2.1"
   win32:
@@ -1155,9 +1155,9 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: "64bb624"
+      ref: "64bb624d1cf37743678dfcb380fe1ed5decccce5"
       resolved-ref: "64bb624d1cf37743678dfcb380fe1ed5decccce5"
-      url: "https://github.com/wgh136/zip_flutter"
+      url: "https://github.com/Et3rW/zip_flutter"
     source: git
     version: "0.0.12"
 sdks:
