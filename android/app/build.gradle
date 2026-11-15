@@ -62,10 +62,12 @@ android {
 
     defaultConfig {
         applicationId isTestBuild ? "com.github.pacalini.pica_comic" : "com.github.et3rw.pica_comic"
+        // Each version's test build is its own app (e.g. ".test517" for 5.1.7),
+        // named after the version in pubspec.yaml.
         if (isTestBuild) {
-            applicationIdSuffix ".test517"
+            applicationIdSuffix ".test" + flutterVersionName.replace(".", "")
         }
-        manifestPlaceholders["appLabel"] = isTestBuild ? "Pica Comic 测试版 5.1.7" : "Pica Comic"
+        manifestPlaceholders["appLabel"] = isTestBuild ? "Pica Comic 测试版 ${flutterVersionName}" : "Pica Comic"
         // You can update the following values to match your application needs.
         // For more information, see: https://docs.flutter.dev/deployment/android#reviewing-the-gradle-build-configuration.
         minSdkVersion flutter.minSdkVersion
