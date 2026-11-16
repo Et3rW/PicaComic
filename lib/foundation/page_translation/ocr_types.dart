@@ -42,6 +42,14 @@ class PixelRect {
         bottom.clamp(0, height),
       );
 
+  /// This rectangle on a page stretched by [sx] and [sy].
+  PixelRect scaled(double sx, double sy) => PixelRect(
+        (left * sx).round(),
+        (top * sy).round(),
+        (right * sx).round(),
+        (bottom * sy).round(),
+      );
+
   List<int> toList() => [left, top, right, bottom];
 
   static PixelRect fromList(List<dynamic> values) => PixelRect(

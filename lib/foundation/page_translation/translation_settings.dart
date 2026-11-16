@@ -1,0 +1,128 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+import 'package:pica_comic/foundation/app.dart';
+
+import 'translator.dart';
+
+/// Page translation settings, kept in their own file
+/// (`page_translation.json` in the app's data directory).
+///
+/// They are deliberately not part of the synced app settings: the file holds
+/// API keys.
+class TranslationSettings extends ChangeNotifier {
+  TranslationSettings(this._file) {
+    _load();
+  }
+
+  final File _file;
+
+  static TranslationSettings? _instance;
+
+  /// Created on first use, from the app's data directory.
+  static TranslationSettings get instance => _instance ??=
+      TranslationSettings(File('${App.dataPath}/page_translation.json'));
+
+  /// Tests install their own.
+  @visibleForTesting
+  static set instance(TranslationSettings value) => _instance = value;
+
+  var _targetCode = 'zh';
+  var _providers = <TranslatorProvider>[];
+  String? _activeId;
+  var _prompt = '';
+  var _translateOnOpen = false;
+
+  TargetLanguage get target => TargetLanguage.of(_targetCode);
+
+  List<TranslatorProvider> get providers => List.unmodifiable(_providers);
+
+  /// The service in use: the chosen one, or the first if that was removed.
+  TranslatorProvider? get activeProvider =>
+      _providers.where((p) => p.id == _activeId).firstOrNull ??
+      _providers.firstOrNull;
+
+  /// The user's own system message, or '' when the built-in one is used.
+  String get customPrompt => _prompt;
+
+  /// The system message sent to models.
+  String get prompt => _prompt.trim().isEmpty ? builtInTranslationPrompt : _prompt;
+
+  /// Whether the reader starts with translation switched on.
+  bool get translateOnOpen => _translateOnOpen;
+
+  void _load() {
+    try {
+      if (!_file.existsSync()) return;
+      var json = jsonDecode(_file.readAsStringSync());
+      if (json is! Map) return;
+      _targetCode = TargetLanguage.of(json['target'] as String?).code;
+      _providers = [
+        if (json['providers'] is List)
+          for (var item in json['providers'] as List)
+            if (TranslatorProvider.fromJson(item) case var provider?) provider,
+      ];
+      _activeId = json['active'] as String?;
+      _prompt = json['prompt'] is String ? json['prompt'] as String : '';
+      _translateOnOpen = json['translateOnOpen'] == true;
+    } catch (_) {
+      // A damaged file is treated as no settings.
+    }
+  }
+
+  void _save() {
+    _file.parent.createSync(recursive: true);
+    _file.writeAsStringSync(jsonEncode({
+      'target': _targetCode,
+      'providers': [for (var provider in _providers) provider.toJson()],
+      'active': _activeId,
+      'prompt': _prompt,
+      'translateOnOpen': _translateOnOpen,
+    }));
+    notifyListeners();
+  }
+
+  void setTarget(String code) {
+    _targetCode = TargetLanguage.of(code).code;
+    _save();
+  }
+
+  void setTranslateOnOpen(bool value) {
+    _translateOnOpen = value;
+    _save();
+  }
+
+  /// Stores [value] as the system message; blank or the built-in text goes
+  /// back to following the built-in one.
+  void setPrompt(String value) {
+    _prompt = value.trim() == builtInTranslationPrompt.trim() ? '' : value.trim();
+    _save();
+  }
+
+  /// Adds [provider], or replaces the entry with the same id. The first
+  /// service added becomes the active one.
+  void saveProvider(TranslatorProvider provider) {
+    var index = _providers.indexWhere((p) => p.id == provider.id);
+    if (index < 0) {
+      _providers.add(provider);
+    } else {
+      _providers[index] = provider;
+    }
+    _activeId ??= provider.id;
+    _save();
+  }
+
+  void removeProvider(String id) {
+    _providers.removeWhere((p) => p.id == id);
+    if (_activeId == id) _activeId = _providers.firstOrNull?.id;
+    _save();
+  }
+
+  void setActive(String id) {
+    if (_providers.any((p) => p.id == id)) {
+      _activeId = id;
+      _save();
+    }
+  }
+}
