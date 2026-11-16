@@ -48,10 +48,16 @@ android {
 
     // Flutter is built for arm64-v8a and x86_64 only. onnxruntime-android also
     // brings armeabi-v7a libraries (about 14 MB) that no device could use
-    // without Flutter's own libraries for that ABI.
+    // without Flutter's own libraries for that ABI. Its x86_64 libraries
+    // (about 23 MB) are left out too: they would serve emulators and a few
+    // x86 devices, where page translation then reports itself unsupported.
     packaging {
         jniLibs {
-            excludes += ['lib/armeabi-v7a/**']
+            excludes += [
+                'lib/armeabi-v7a/**',
+                'lib/x86_64/libonnxruntime.so',
+                'lib/x86_64/libonnxruntime4j_jni.so',
+            ]
         }
     }
 
