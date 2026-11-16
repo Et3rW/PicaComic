@@ -39,6 +39,7 @@ import '../../network/eh_network/tag_stack.dart';
 import '../../network/nhentai_network/tag_settings.dart';
 import '../../network/nhentai_network/tag_stack.dart';
 import '../nhentai/tag_stack_page.dart';
+import 'translation_settings_page.dart';
 import '../../network/update.dart';
 import '../../network/webdav.dart';
 import '../../tools/background_service.dart';

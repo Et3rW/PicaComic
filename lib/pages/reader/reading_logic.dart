@@ -58,6 +58,11 @@ class ComicReadingPageLogic extends StateController {
 
   List<bool> requestedLoadingItems = [];
 
+  /// Whether pages are shown translated. Starts on only when the user asked
+  /// for that and everything it needs is set up.
+  bool translatePages = TranslationSettings.instance.translateOnOpen &&
+      PageTranslationService.instance.problem == null;
+
   bool haveUsedInitialPage = false;
 
   /// 双页模式下是否在第一页时显示单页

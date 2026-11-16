@@ -193,6 +193,21 @@ extension ToolBar on ComicReadingPage {
                         ),
                       ),
                     Tooltip(
+                      message: "翻译".tl,
+                      child: GestureDetector(
+                        onLongPress: () => showTranslationMenu(logic),
+                        child: IconButton(
+                          icon: Icon(
+                            Icons.translate,
+                            color: logic.translatePages
+                                ? Theme.of(context).colorScheme.primary
+                                : null,
+                          ),
+                          onPressed: () => toggleTranslation(logic),
+                        ),
+                      ),
+                    ),
+                    Tooltip(
                       message: "保存图片".tl,
                       child: IconButton(
                         icon: const Icon(Icons.save_alt),

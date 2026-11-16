@@ -21,6 +21,13 @@ class _ReadingSettingsState extends State<ReadingSettings> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        ListTile(
+          leading: const Icon(Icons.translate),
+          title: Text("图片翻译".tl),
+          subtitle: Text("识别页面上的文字并翻译".tl),
+          trailing: const Icon(Icons.arrow_right),
+          onTap: () => context.to(() => const TranslationSettingsPage()),
+        ),
         SelectSetting(
           leading: const Icon(Icons.chrome_reader_mode),
           title: "阅读模式".tl,

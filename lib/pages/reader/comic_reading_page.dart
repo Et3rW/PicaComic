@@ -20,6 +20,9 @@ import 'package:pica_comic/foundation/image_loader/base_image_provider.dart';
 import 'package:pica_comic/foundation/image_loader/file_image_loader.dart';
 import 'package:pica_comic/foundation/image_loader/stream_image_provider.dart';
 import 'package:pica_comic/foundation/local_favorites.dart';
+import 'package:pica_comic/foundation/page_translation/page_translation_service.dart';
+import 'package:pica_comic/foundation/page_translation/translation_settings.dart';
+import 'package:pica_comic/pages/settings/translation_settings_page.dart';
 import 'package:pica_comic/network/download.dart';
 import 'package:pica_comic/network/eh_network/eh_models.dart';
 import 'package:pica_comic/network/eh_network/get_gallery_id.dart';
@@ -561,6 +564,77 @@ class ComicReadingPage extends StatelessWidget {
       }
     }
     throw "failed";
+  }
+
+  /// Switches between the original pages and their translations.
+  void toggleTranslation(ComicReadingPageLogic logic) {
+    if (!logic.translatePages) {
+      var problem = PageTranslationService.instance.problem;
+      if (problem != null) {
+        showToast(message: translationProblemMessage(problem));
+        if (problem != TranslationProblem.unsupported) {
+          App.globalTo(() => const TranslationSettingsPage());
+        }
+        return;
+      }
+    }
+    logic.translatePages = !logic.translatePages;
+    logic.update();
+    showToast(
+        message: logic.translatePages
+            ? "已开启翻译, 页面翻译好后会自动替换".tl
+            : "已关闭翻译".tl);
+  }
+
+  /// Long press on the translate button: act on the current page.
+  void showTranslationMenu(ComicReadingPageLogic logic) {
+    var service = PageTranslationService.instance;
+    var index = logic.index - 1;
+    var pageKey = index >= 0 && index < logic.urls.length
+        ? readingData.translationKey(logic.order, index)
+        : null;
+    var status = pageKey == null ? null : service.statusOf(pageKey);
+    showDialog<void>(
+      context: App.globalContext!,
+      builder: (context) => SimpleDialog(
+        title: Text("翻译".tl),
+        children: [
+          if (status?.state == PageTranslationState.failed)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+              child: Text(
+                "${"这一页翻译失败".tl}: ${status!.message ?? ""}",
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
+          if (status?.state == PageTranslationState.noText)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+              child: Text("这一页没有需要翻译的文字".tl),
+            ),
+          if (logic.translatePages && pageKey != null)
+            SimpleDialogOption(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                await service.forget(pageKey);
+                // Drop the copies held in memory so the page loads again.
+                BaseImageProvider.clearCache();
+                PaintingBinding.instance.imageCache.clear();
+                PaintingBinding.instance.imageCache.clearLiveImages();
+                logic.update();
+              },
+              child: Text("重新翻译这一页".tl),
+            ),
+          SimpleDialogOption(
+            onPressed: () {
+              Navigator.of(context).pop();
+              App.globalTo(() => const TranslationSettingsPage());
+            },
+            child: Text("翻译设置".tl),
+          ),
+        ],
+      ),
+    );
   }
 
   void share() async {
