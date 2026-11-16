@@ -46,6 +46,15 @@ android {
         }
     }
 
+    // Flutter is built for arm64-v8a and x86_64 only. onnxruntime-android also
+    // brings armeabi-v7a libraries (about 14 MB) that no device could use
+    // without Flutter's own libraries for that ABI.
+    packaging {
+        jniLibs {
+            excludes += ['lib/armeabi-v7a/**']
+        }
+    }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
