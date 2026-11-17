@@ -23,11 +23,15 @@ if (flutterVersionName == null) {
 }
 
 
-def keystorePropertiesFile = rootProject.file("key.properties")
-def keystoreProperties = new Properties()
 def isTestBuild = System.getenv("PICA_TEST_BUILD") == "true"
 def isReleaseBuild = System.getenv("PICA_RELEASE_BUILD") == "true"
-if (keystorePropertiesFile.exists()) {
+// Test builds are signed with the fixed test key in test-key.properties, so a
+// newer test build of the same version installs over the older one. Without
+// that file they fall back to the machine's debug key.
+def keystorePropertiesFile = rootProject.file(isTestBuild ? "test-key.properties" : "key.properties")
+def keystoreProperties = new Properties()
+def hasSigningKey = keystorePropertiesFile.exists()
+if (hasSigningKey) {
     keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
 } else if (!isTestBuild) {
     throw new GradleException("Release signing requires android/key.properties. For a separate test app, set PICA_TEST_BUILD=true.")
@@ -94,7 +98,7 @@ android {
 
     signingConfigs {
         debug {
-            if (!isTestBuild) {
+            if (hasSigningKey) {
                 storeType keystoreProperties.getProperty('storeType', 'JKS')
                 storeFile file(keystoreProperties['storeFile'])
                 storePassword keystoreProperties['storePassword']
@@ -103,7 +107,7 @@ android {
             }
         }
         release {
-            if (!isTestBuild) {
+            if (hasSigningKey) {
                 storeType keystoreProperties.getProperty('storeType', 'JKS')
                 keyAlias keystoreProperties['keyAlias']
                 keyPassword keystoreProperties['keyPassword']
@@ -116,7 +120,7 @@ android {
     buildTypes {
         release {
             // Test packages use a separate app ID and cannot overwrite the user's app.
-            signingConfig isTestBuild ? signingConfigs.debug : signingConfigs.release
+            signingConfig isTestBuild && !hasSigningKey ? signingConfigs.debug : signingConfigs.release
             applicationVariants.all { variant ->
                 variant.outputs.all { output ->
                     def abi = output.getFilter(com.android.build.OutputFile.ABI)

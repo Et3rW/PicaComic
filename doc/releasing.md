@@ -13,7 +13,7 @@
 
 ## 测试版
 
-在功能分支上手动运行 **Build Android Test APK**。测试版用每次构建临时生成的调试签名，包名带版本后缀，和正式版并存，不会覆盖正式版的数据。产物在该次运行的 Artifacts 里，核对 `SHA256SUMS.txt` 后发布为 GitHub 预发布版本。
+在功能分支上手动运行 **Build Android Test APK**。测试版包名带版本后缀，和正式版并存，不会覆盖正式版的数据。测试版用一把固定的测试签名（证书 SHA-256 `b0c88322130e114c4ed2cce5533c2eb9e87c7ecaddd0b43025bcae3cfdcf22c5`），同一版本的新测试版可以直接覆盖安装旧的；工作流会核对证书。没有配置测试签名的 fork 会退回每次临时生成的调试签名，这时新测试版要先卸载旧的才能安装。产物在该次运行的 Artifacts 里，核对 `SHA256SUMS.txt` 后发布为 GitHub 预发布版本。
 
 ## 正式版
 
@@ -28,4 +28,4 @@
 
 ## 发布签名
 
-Android 发布签名保存在仓库的 Actions Secrets 里（`ANDROID_RELEASE_KEYSTORE_BASE64`、`ANDROID_RELEASE_KEYSTORE_PASSWORD`）。Secrets 写入后无法再读出，所以必须另外保留一份密钥库和密码。丢失后只能换签名，用户需要卸载重装。
+Android 发布签名保存在仓库的 Actions Secrets 里（`ANDROID_RELEASE_KEYSTORE_BASE64`、`ANDROID_RELEASE_KEYSTORE_PASSWORD`），测试签名也是（`ANDROID_TEST_KEYSTORE_BASE64`、`ANDROID_TEST_KEYSTORE_PASSWORD`，别名 `pica-test`）。Secrets 写入后无法再读出，所以必须另外保留一份密钥库和密码。丢失后只能换签名，用户需要卸载重装。
