@@ -375,4 +375,8 @@ class ComicReadingPageLogic extends StateController {
   }
 
   late final void Function() openEpsView;
+
+  /// Translates the current chapter again from the page being read, after
+  /// the translation settings changed.
+  late final void Function() restartTranslation;
 }

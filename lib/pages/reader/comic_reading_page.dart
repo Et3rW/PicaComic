@@ -22,6 +22,7 @@ import 'package:pica_comic/foundation/image_loader/stream_image_provider.dart';
 import 'package:pica_comic/foundation/local_favorites.dart';
 import 'package:pica_comic/foundation/page_translation/batch_translation.dart';
 import 'package:pica_comic/foundation/page_translation/page_translation_service.dart';
+import 'package:pica_comic/foundation/page_translation/translation_settings.dart';
 import 'package:pica_comic/pages/settings/translation_settings_page.dart';
 import 'package:pica_comic/network/download.dart';
 import 'package:pica_comic/network/eh_network/eh_models.dart';
@@ -221,6 +222,7 @@ class ComicReadingPage extends StatelessWidget {
       BaseImageProvider.clearCache();
       BaseImageProvider.setCacheSizeLimit(100 * 1024 * 1024);
       logic.openEpsView = openEpsDrawer;
+      logic.restartTranslation = () => translateChapter(logic);
       if (useDarkBackground) {
         Future.microtask(() =>
             StateController.findOrNull<WindowFrameController>()
