@@ -58,10 +58,28 @@ class ComicReadingPageLogic extends StateController {
 
   List<bool> requestedLoadingItems = [];
 
-  /// Whether pages are shown translated. Starts on only when the user asked
-  /// for that and everything it needs is set up.
-  bool translatePages = TranslationSettings.instance.translateOnOpen &&
-      PageTranslationService.instance.problem == null;
+  /// Pages the user asked to see translated, by their translation key. Every
+  /// page starts as the original; nothing is translated until asked for.
+  final translatedPages = <String>{};
+
+  /// Whether page [index] (0-based) of the current chapter is shown translated.
+  bool isTranslated(int index) =>
+      translatedPages.contains(data.translationKey(order, index));
+
+  /// The pages (0-based) on screen now: two in the two-page modes, otherwise
+  /// the current one.
+  List<int> get visiblePages {
+    var first = index - 1;
+    var pages = [first];
+    if (readingMethod.isTwoPage &&
+        !(singlePageForFirstScreen && index == 1)) {
+      pages.add(first + 1);
+    }
+    return [
+      for (var page in pages)
+        if (page >= 0 && page < urls.length) page,
+    ];
+  }
 
   bool haveUsedInitialPage = false;
 

@@ -32,7 +32,6 @@ class TranslationSettings extends ChangeNotifier {
   var _providers = <TranslatorProvider>[];
   String? _activeId;
   var _prompt = '';
-  var _translateOnOpen = false;
 
   TargetLanguage get target => TargetLanguage.of(_targetCode);
 
@@ -49,9 +48,6 @@ class TranslationSettings extends ChangeNotifier {
   /// The system message sent to models.
   String get prompt => _prompt.trim().isEmpty ? builtInTranslationPrompt : _prompt;
 
-  /// Whether the reader starts with translation switched on.
-  bool get translateOnOpen => _translateOnOpen;
-
   void _load() {
     try {
       if (!_file.existsSync()) return;
@@ -65,7 +61,6 @@ class TranslationSettings extends ChangeNotifier {
       ];
       _activeId = json['active'] as String?;
       _prompt = json['prompt'] is String ? json['prompt'] as String : '';
-      _translateOnOpen = json['translateOnOpen'] == true;
     } catch (_) {
       // A damaged file is treated as no settings.
     }
@@ -78,18 +73,12 @@ class TranslationSettings extends ChangeNotifier {
       'providers': [for (var provider in _providers) provider.toJson()],
       'active': _activeId,
       'prompt': _prompt,
-      'translateOnOpen': _translateOnOpen,
     }));
     notifyListeners();
   }
 
   void setTarget(String code) {
     _targetCode = TargetLanguage.of(code).code;
-    _save();
-  }
-
-  void setTranslateOnOpen(bool value) {
-    _translateOnOpen = value;
     _save();
   }
 

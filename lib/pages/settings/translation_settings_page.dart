@@ -104,13 +104,6 @@ class _TranslationSettingsPageState extends State<TranslationSettingsPage> {
               },
             ),
           ),
-          SwitchListTile(
-            secondary: const Icon(Icons.auto_awesome_outlined),
-            title: Text('打开漫画时自动翻译'.tl),
-            subtitle: Text('关闭时, 在阅读器工具栏里手动开启'.tl),
-            value: settings.translateOnOpen,
-            onChanged: settings.setTranslateOnOpen,
-          ),
           const Divider(),
           ListTile(title: Text('翻译服务'.tl)),
           for (var provider in settings.providers) _buildProvider(provider),

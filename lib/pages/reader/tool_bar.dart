@@ -199,7 +199,8 @@ extension ToolBar on ComicReadingPage {
                         child: IconButton(
                           icon: Icon(
                             Icons.translate,
-                            color: logic.translatePages
+                            color: logic.visiblePages.isNotEmpty &&
+                                    logic.visiblePages.every(logic.isTranslated)
                                 ? Theme.of(context).colorScheme.primary
                                 : null,
                           ),

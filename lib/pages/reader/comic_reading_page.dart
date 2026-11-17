@@ -21,7 +21,6 @@ import 'package:pica_comic/foundation/image_loader/file_image_loader.dart';
 import 'package:pica_comic/foundation/image_loader/stream_image_provider.dart';
 import 'package:pica_comic/foundation/local_favorites.dart';
 import 'package:pica_comic/foundation/page_translation/page_translation_service.dart';
-import 'package:pica_comic/foundation/page_translation/translation_settings.dart';
 import 'package:pica_comic/pages/settings/translation_settings_page.dart';
 import 'package:pica_comic/network/download.dart';
 import 'package:pica_comic/network/eh_network/eh_models.dart';
@@ -566,24 +565,30 @@ class ComicReadingPage extends StatelessWidget {
     throw "failed";
   }
 
-  /// Switches between the original pages and their translations.
+  /// Translates the pages on screen, or shows their originals again when
+  /// they are already translated. Other pages are not touched: nothing is
+  /// translated, or paid for, unless the user asks for that page.
   void toggleTranslation(ComicReadingPageLogic logic) {
-    if (!logic.translatePages) {
-      var problem = PageTranslationService.instance.problem;
-      if (problem != null) {
-        showToast(message: translationProblemMessage(problem));
-        if (problem != TranslationProblem.unsupported) {
-          App.globalTo(() => const TranslationSettingsPage());
-        }
-        return;
-      }
+    var pages = logic.visiblePages;
+    if (pages.isEmpty) return;
+    var keys = [
+      for (var page in pages) readingData.translationKey(logic.order, page)
+    ];
+    if (keys.every(logic.translatedPages.contains)) {
+      logic.translatedPages.removeAll(keys);
+      logic.update();
+      return;
     }
-    logic.translatePages = !logic.translatePages;
+    var problem = PageTranslationService.instance.problem;
+    if (problem != null) {
+      showToast(message: translationProblemMessage(problem));
+      if (problem != TranslationProblem.unsupported) {
+        App.globalTo(() => const TranslationSettingsPage());
+      }
+      return;
+    }
+    logic.translatedPages.addAll(keys);
     logic.update();
-    showToast(
-        message: logic.translatePages
-            ? "已开启翻译, 页面翻译好后会自动替换".tl
-            : "已关闭翻译".tl);
   }
 
   /// Long press on the translate button: act on the current page.
@@ -612,7 +617,7 @@ class ComicReadingPage extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
               child: Text("这一页没有需要翻译的文字".tl),
             ),
-          if (logic.translatePages && pageKey != null)
+          if (pageKey != null && logic.translatedPages.contains(pageKey))
             SimpleDialogOption(
               onPressed: () async {
                 Navigator.of(context).pop();
