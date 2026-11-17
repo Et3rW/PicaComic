@@ -465,7 +465,7 @@ class _SettingsPageState extends State<SettingsPage> implements PopEntry{
         ListTile(
           leading: const Icon(Icons.update),
           title: Text("检查更新".tl),
-          subtitle: Text("${"当前:".tl} $appVersion"),
+          subtitle: Text("${"当前:".tl} $appVersionLabel"),
           onTap: () {
             findUpdate(context);
           },
@@ -626,7 +626,7 @@ class _SettingsPageState extends State<SettingsPage> implements PopEntry{
           ),
         ),
         const Text(
-          "V$appVersion",
+          "V$appVersionLabel",
           style: TextStyle(fontSize: 16),
         ),
         Text("Pica Comic是一个完全免费的漫画阅读APP".tl),

@@ -17,4 +17,9 @@ void main() {
     final name = '${match![1]}.${match[2]}.${match[3]}';
     expect(appVersion, name);
   });
+
+  test('a build without a test number shows the plain version', () {
+    expect(testBuildNumber, 0);
+    expect(appVersionLabel, appVersion);
+  });
 }

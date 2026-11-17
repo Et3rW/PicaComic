@@ -199,6 +199,27 @@ class PageTranslationService extends ChangeNotifier {
         shown.length, shown.length, last.url, last.savePath, shown, last.ext);
   }
 
+  /// Loads a page from [source] and translates it without showing it, so it
+  /// is ready when the reader gets there. Returns null when the page is done
+  /// or has nothing to translate, otherwise why it failed.
+  Future<String?> translateInBackground(
+      Stream<DownloadProgress> source, String pageKey) async {
+    // Already drawn: nothing to load or pay for.
+    if (await CacheManager().findCache(keyFor(pageKey)) != null) return null;
+    try {
+      await for (var _ in wrap(source, pageKey)) {}
+    } catch (e) {
+      // The image itself could not be loaded.
+      return '$e';
+    }
+    var status = statusOf(pageKey);
+    return switch (status?.state) {
+      PageTranslationState.done || PageTranslationState.noText => null,
+      PageTranslationState.failed => status!.message ?? '',
+      _ => 'The image did not finish loading',
+    };
+  }
+
   /// The translated version of the page image [original], or [original]
   /// itself when there is nothing to translate.
   Future<Uint8List> translate(Uint8List original, String pageKey) {

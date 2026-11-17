@@ -197,13 +197,7 @@ extension ToolBar on ComicReadingPage {
                       child: GestureDetector(
                         onLongPress: () => showTranslationMenu(logic),
                         child: IconButton(
-                          icon: Icon(
-                            Icons.translate,
-                            color: logic.visiblePages.isNotEmpty &&
-                                    logic.visiblePages.every(logic.isTranslated)
-                                ? Theme.of(context).colorScheme.primary
-                                : null,
-                          ),
+                          icon: _TranslationIcon(logic),
                           onPressed: () => toggleTranslation(logic),
                         ),
                       ),
@@ -479,6 +473,44 @@ extension ToolBar on ComicReadingPage {
           );
         },
       ),
+    );
+  }
+}
+
+/// The translate button's icon: highlighted while translation is on, with a
+/// ring that fills as the chapter is translated in the background.
+class _TranslationIcon extends StatelessWidget {
+  const _TranslationIcon(this.logic);
+
+  final ComicReadingPageLogic logic;
+
+  @override
+  Widget build(BuildContext context) {
+    var icon = Icon(
+      Icons.translate,
+      color: logic.translateAll ? Theme.of(context).colorScheme.primary : null,
+    );
+    var batch = logic.translationBatch;
+    if (batch == null) return icon;
+    return ListenableBuilder(
+      listenable: batch,
+      builder: (context, _) {
+        if (!batch.isRunning || batch.total == 0) return icon;
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            SizedBox(
+              width: 30,
+              height: 30,
+              child: CircularProgressIndicator(
+                value: batch.finished / batch.total,
+                strokeWidth: 2,
+              ),
+            ),
+            icon,
+          ],
+        );
+      },
     );
   }
 }

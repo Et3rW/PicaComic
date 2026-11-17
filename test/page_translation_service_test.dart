@@ -217,6 +217,33 @@ void main() {
       expect(service.statusOf('comic/2/2')!.state, PageTranslationState.failed);
     });
 
+    test('a page translated ahead of the reader is ready when it is shown',
+        () async {
+      answerWith(['甲', '乙']);
+      expect(await service.translateInBackground(source(), 'comic/3/0'),
+          isNull);
+      final before = requests();
+      final events = await service.wrap(source(), 'comic/3/0').toList();
+      expect(events.last.data, isNot(page));
+      expect(requests(), before);
+      expect(ocrRuns, 1);
+    });
+
+    test('translating ahead reports why a page failed', () async {
+      http.on('llm.example/v1/chat/completions', (_) => FakeResponse(
+          '{"error":{"message":"Incorrect API key"}}', status: 401));
+      expect(await service.translateInBackground(source(), 'comic/3/1'),
+          'HTTP 401: Incorrect API key');
+
+      Stream<DownloadProgress> broken() async* {
+        yield const DownloadProgress(0, 100, 'u', '');
+        throw Exception('connection reset');
+      }
+
+      expect(await service.translateInBackground(broken(), 'comic/3/2'),
+          contains('connection reset'));
+    });
+
     test('forgetting a page translates it again', () async {
       answerWith(['甲', '乙']);
       await service.translate(page, 'comic/2/3');

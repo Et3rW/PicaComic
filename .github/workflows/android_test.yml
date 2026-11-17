@@ -1,8 +1,12 @@
 name: Build Android Test APK
-run-name: Android test APK - ${{ github.sha }}
+run-name: Android test APK ${{ inputs.test_number }} - ${{ github.sha }}
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      test_number:
+        description: 'Test build number within this version (3 makes 5.1.9.3)'
+        required: true
 
 permissions:
   contents: read
@@ -22,6 +26,13 @@ jobs:
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+\+[0-9]+$ ]] || { echo "Unexpected version: $version"; exit 1; }
           echo "APP_VERSION=${version%%+*}" >> "$GITHUB_ENV"
           echo "APP_BUILD=${version##*+}" >> "$GITHUB_ENV"
+      - name: Read test build number
+        env:
+          TEST_NUMBER: ${{ inputs.test_number }}
+        run: |
+          [[ "$TEST_NUMBER" =~ ^[1-9][0-9]?$ ]] || { echo "Test number must be 1-99, got: $TEST_NUMBER"; exit 1; }
+          echo "PICA_TEST_NUMBER=$TEST_NUMBER" >> "$GITHUB_ENV"
+          echo "TEST_VERSION=$APP_VERSION.$TEST_NUMBER" >> "$GITHUB_ENV"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -58,12 +69,12 @@ jobs:
       - name: Tests
         run: flutter test --no-pub
       - name: Build release-mode test APK
-        run: flutter build apk --release --no-pub --target-platform android-arm64,android-x64
+        run: flutter build apk --release --no-pub --target-platform android-arm64,android-x64 --dart-define=PICA_TEST_NUMBER=$PICA_TEST_NUMBER
       - name: Verify and package APK
         shell: bash
         run: |
           mkdir -p dist
-          apk="PicaComic-$APP_VERSION-test.apk"
+          apk="PicaComic-$TEST_VERSION-test.apk"
           cp build/app/outputs/flutter-apk/app-release.apk "dist/$apk"
           build_tools=$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)
           signature=$("$ANDROID_HOME/build-tools/$build_tools/apksigner" verify --verbose --print-certs "dist/$apk")
@@ -78,13 +89,14 @@ jobs:
           badging=$("$ANDROID_HOME/build-tools/$build_tools/aapt" dump badging "dist/$apk")
           echo "$badging"
           # The test app must install next to the released one, never over it.
-          expected="package: name='com.github.pacalini.pica_comic.test${APP_VERSION//./}' versionCode='$APP_BUILD' versionName='$APP_VERSION'"
+          # Later test builds of a version install over earlier ones.
+          expected="package: name='com.github.pacalini.pica_comic.test${APP_VERSION//./}' versionCode='$((APP_BUILD * 100 + PICA_TEST_NUMBER))' versionName='$TEST_VERSION'"
           grep -qF "$expected" <<< "$badging" || { echo "Unexpected package/version, wanted: $expected"; exit 1; }
           cd dist
           sha256sum "$apk" > SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: PicaComic-${{ env.APP_VERSION }}-test-apk
+          name: PicaComic-${{ env.TEST_VERSION }}-test-apk
           path: dist/
           if-no-files-found: error
           retention-days: 30

@@ -28,6 +28,18 @@ def isReleaseBuild = System.getenv("PICA_RELEASE_BUILD") == "true"
 // Test builds are signed with the fixed test key in test-key.properties, so a
 // newer test build of the same version installs over the older one. Without
 // that file they fall back to the machine's debug key.
+// Test builds carry a fourth number for their order within a version:
+// 5.1.9.3 is the third test build of 5.1.9. Releases keep three numbers.
+def testNumber = isTestBuild ? (System.getenv("PICA_TEST_NUMBER") ?: "") : ""
+if (testNumber && !(testNumber ==~ /[1-9][0-9]?/)) {
+    throw new GradleException("PICA_TEST_NUMBER must be a number from 1 to 99, not '${testNumber}'.")
+}
+def appVersionName = testNumber ? "${flutterVersionName}.${testNumber}" : flutterVersionName
+// Each test build of a version gets a higher version code than the last, so
+// it installs as an update of it.
+def appVersionCode = testNumber
+        ? flutterVersionCode.toInteger() * 100 + testNumber.toInteger()
+        : flutterVersionCode.toInteger()
 def keystorePropertiesFile = rootProject.file(isTestBuild ? "test-key.properties" : "key.properties")
 def keystoreProperties = new Properties()
 def hasSigningKey = keystorePropertiesFile.exists()
@@ -86,13 +98,13 @@ android {
         if (isTestBuild) {
             applicationIdSuffix ".test" + flutterVersionName.replace(".", "")
         }
-        manifestPlaceholders["appLabel"] = isTestBuild ? "Pica Comic 测试版 ${flutterVersionName}" : "Pica Comic"
+        manifestPlaceholders["appLabel"] = isTestBuild ? "Pica Comic 测试版 ${appVersionName}" : "Pica Comic"
         // You can update the following values to match your application needs.
         // For more information, see: https://docs.flutter.dev/deployment/android#reviewing-the-gradle-build-configuration.
         minSdkVersion flutter.minSdkVersion
         targetSdk flutter.targetSdkVersion
-        versionCode flutterVersionCode.toInteger()
-        versionName flutterVersionName
+        versionCode appVersionCode
+        versionName appVersionName
         multiDexEnabled true
     }
 

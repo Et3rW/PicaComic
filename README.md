@@ -56,7 +56,7 @@ Pica Comic has 6 built-in comic sources:
 - Manage local favorites and network favorites
 - Data sync(using webdav)
 - Reading history
-- Page translation (Android): text on a page is recognized on the device and sent to a translation service of your choice (OpenAI-compatible APIs, Claude, Gemini or Google Translate), then drawn back over the page. Pages are only translated when you tap the translate button. See [doc/page-translation.md](doc/page-translation.md).
+- Page translation (Android): text on a page is recognized on the device and sent to a translation service of your choice (OpenAI-compatible APIs, Claude, Gemini or Google Translate), then drawn back over the page. Nothing is translated until you tap the translate button; then the whole comic is shown translated, with each chapter translated in the background from the page you are on. See [doc/page-translation.md](doc/page-translation.md).
 
 ### History
 
@@ -75,7 +75,7 @@ Pica Comic 是一个用 Flutter 编写的多漫画源阅读器。本仓库 fork 
 - **iOS**：`PicaComic-<版本>-unsigned.ipa`，未签名，需要用自己的方式签名安装。
 - **macOS**：`PicaComic-<版本>-macos-universal.zip`，支持 Apple 芯片和 Intel。没有经过 Apple 公证，第一次打开时可能被系统拦截。
 
-标着 Pre-release 的是测试版。测试版的包名和正式版不同，可以同时安装。也可以用 [Obtainium](INSTALL.md#obtainium) 从 GitHub 自动获取更新。
+标着 Pre-release 的是测试版，版本号多一位，表示这是该版本的第几个测试版，例如 5.1.9.3 是 5.1.9 的第 3 个测试版。测试版的包名和正式版不同，可以同时安装；同一版本的新测试版可以直接覆盖旧的。也可以用 [Obtainium](INSTALL.md#obtainium) 从 GitHub 自动获取更新。
 
 ### 内置漫画源
 
@@ -94,7 +94,7 @@ Pica Comic 是一个用 Flutter 编写的多漫画源阅读器。本仓库 fork 
 - 阅读历史
 - 通过 WebDAV 同步数据
 - e-hentai、nhentai 点击标签时可以叠加多个标签一起搜索
-- **图片翻译（仅 Android）**：在本机识别页面上的文字，只把文字发给你选择的翻译服务，再把译文画回原处。支持 OpenAI 兼容接口（DeepSeek、通义千问、智谱 GLM、Kimi、豆包、硅基流动、OpenRouter、Ollama 等）、Claude、Gemini，以及不需要 key 的 Google 翻译。页面默认显示原图，点工具栏的翻译按钮才会翻译当前页。详见 [doc/page-translation.md](doc/page-translation.md)。
+- **图片翻译（仅 Android）**：在本机识别页面上的文字，只把文字发给你选择的翻译服务，再把译文画回原处。支持 OpenAI 兼容接口（DeepSeek、通义千问、智谱 GLM、Kimi、豆包、硅基流动、OpenRouter、Ollama 等）、Claude、Gemini，以及不需要 key 的 Google 翻译。页面默认显示原图，点工具栏的翻译按钮后整本显示译文，从当前页开始在后台把每一章依次翻译完。详见 [doc/page-translation.md](doc/page-translation.md)。
 
 ### 自己构建
 
