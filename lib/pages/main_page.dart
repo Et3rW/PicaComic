@@ -13,9 +13,9 @@ import 'explore_page.dart';
 import 'favorites/main_favorites_page.dart';
 import 'pre_search_page.dart';
 import 'settings/settings_page.dart';
-import 'package:url_launcher/url_launcher_string.dart';
 import 'package:pica_comic/foundation/app.dart';
 import 'package:pica_comic/network/update.dart';
+import 'package:pica_comic/pages/update_dialog.dart';
 import 'me_page.dart';
 import 'package:pica_comic/network/picacg_network/methods.dart';
 
@@ -128,31 +128,10 @@ class MainPageState extends State<MainPage> {
     if (res != true) return;
     var info = await getUpdatesInfo();
     if (info == null) return;
-    showDialog(
-        context: App.globalContext!,
-        builder: (dialogContext) {
-          return AlertDialog(
-            title: Text("有可用更新".tl),
-            content: Text(info),
-            actions: [
-              TextButton(
-                  onPressed: () {
-                    dialogContext.pop();
-                    appdata.settings[2] = "0";
-                    appdata.writeData();
-                  },
-                  child: const Text("关闭更新检查")),
-              TextButton(onPressed: dialogContext.pop, child: Text("取消".tl)),
-              TextButton(
-                  onPressed: () {
-                    getDownloadUrl().then((s) {
-                      launchUrlString(s, mode: LaunchMode.externalApplication);
-                    });
-                  },
-                  child: Text("下载".tl))
-            ],
-          );
-        });
+    showUpdateDialog(App.globalContext!, info, onDisableCheck: () {
+      appdata.settings[2] = "0";
+      appdata.writeData();
+    });
 
     // if (appdata.settings[80] == "1") {
     //   ComicSourceSettings.checkCustomComicSourceUpdate();

@@ -20,6 +20,10 @@ import 'package:pica_comic/foundation/image_loader/base_image_provider.dart';
 import 'package:pica_comic/foundation/image_loader/file_image_loader.dart';
 import 'package:pica_comic/foundation/image_loader/stream_image_provider.dart';
 import 'package:pica_comic/foundation/local_favorites.dart';
+import 'package:pica_comic/foundation/page_translation/batch_translation.dart';
+import 'package:pica_comic/foundation/page_translation/page_translation_service.dart';
+import 'package:pica_comic/foundation/page_translation/translation_settings.dart';
+import 'package:pica_comic/pages/settings/translation_settings_page.dart';
 import 'package:pica_comic/network/download.dart';
 import 'package:pica_comic/network/eh_network/eh_models.dart';
 import 'package:pica_comic/network/eh_network/get_gallery_id.dart';
@@ -218,12 +222,14 @@ class ComicReadingPage extends StatelessWidget {
       BaseImageProvider.clearCache();
       BaseImageProvider.setCacheSizeLimit(100 * 1024 * 1024);
       logic.openEpsView = openEpsDrawer;
+      logic.restartTranslation = () => translateChapter(logic);
       if (useDarkBackground) {
         Future.microtask(() =>
             StateController.findOrNull<WindowFrameController>()
                 ?.setDarkTheme());
       }
     }, dispose: (logic) {
+      logic.translationBatch?.cancel();
       //清除缓存并减小最大缓存
       BaseImageProvider.clearCache();
       BaseImageProvider.setCacheSizeLimit(50 * 1024 * 1024);
@@ -475,6 +481,8 @@ class ComicReadingPage extends StatelessWidget {
       logic.urls = res.data;
     }
     logic.isLoading = false;
+    // A new chapter is translated as a whole too while translation is on.
+    translateChapter(logic);
     logic.update();
   }
 
@@ -561,6 +569,125 @@ class ComicReadingPage extends StatelessWidget {
       }
     }
     throw "failed";
+  }
+
+  /// Turns translation on for the whole comic, or off again. When on, every
+  /// page of the current chapter is translated in the background, starting
+  /// from the page being read, and so is each chapter opened after it.
+  void toggleTranslation(ComicReadingPageLogic logic) {
+    if (logic.translateAll) {
+      logic.translateAll = false;
+      logic.translationBatch?.cancel();
+      logic.translationBatch = null;
+      logic.update();
+      showToast(message: "已关闭翻译".tl);
+      return;
+    }
+    var problem = PageTranslationService.instance.problem;
+    if (problem != null) {
+      showToast(message: translationProblemMessage(problem));
+      if (problem != TranslationProblem.unsupported) {
+        App.globalTo(() => const TranslationSettingsPage());
+      }
+      return;
+    }
+    logic.translateAll = true;
+    translateChapter(logic);
+    logic.update();
+    if (logic.urls.isNotEmpty) {
+      showToast(
+          message: "${"正在翻译本章".tl}: ${logic.urls.length} ${"页".tl}");
+    }
+  }
+
+  /// Starts translating every page of the current chapter in the background,
+  /// in place of a batch for another chapter.
+  void translateChapter(ComicReadingPageLogic logic) {
+    logic.translationBatch?.cancel();
+    logic.translationBatch = null;
+    if (!logic.translateAll || logic.urls.isEmpty) return;
+    var ep = logic.order;
+    var urls = List.of(logic.urls);
+    var service = PageTranslationService.instance;
+    var batch = BatchTranslation(
+      pages: BatchTranslation.orderFrom(urls.length, logic.index - 1),
+      translatePage: (page) => service.translateInBackground(
+          readingData.loadImage(ep, page, urls[page]),
+          readingData.translationKey(ep, page)),
+    );
+    logic.translationBatch = batch;
+    batch.run().then((_) {
+      if (batch.isCancelled || logic.translationBatch != batch) return;
+      if (batch.stopReason != null) {
+        showToast(
+            message: "${"翻译连续失败, 已停止".tl}: ${batch.stopReason}");
+      } else if (batch.failed > 0) {
+        showToast(
+            message:
+                "${"本章翻译完成".tl}, ${"失败".tl}: ${batch.failed} ${"页".tl}");
+      } else {
+        showToast(message: "本章翻译完成".tl);
+      }
+    });
+  }
+
+  /// Long press on the translate button: act on the current page.
+  void showTranslationMenu(ComicReadingPageLogic logic) {
+    var service = PageTranslationService.instance;
+    var index = logic.index - 1;
+    var pageKey = index >= 0 && index < logic.urls.length
+        ? readingData.translationKey(logic.order, index)
+        : null;
+    var status = pageKey == null ? null : service.statusOf(pageKey);
+    showDialog<void>(
+      context: App.globalContext!,
+      builder: (context) => SimpleDialog(
+        title: Text("翻译".tl),
+        children: [
+          if (status?.state == PageTranslationState.failed)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+              child: Text(
+                "${"这一页翻译失败".tl}: ${status!.message ?? ""}",
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
+          if (status?.state == PageTranslationState.noText)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+              child: Text("这一页没有需要翻译的文字".tl),
+            ),
+          if (logic.translationBatch case var batch?)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+              child: Text(
+                "${"本章已翻译".tl}: ${batch.finished} / ${batch.total}"
+                "${batch.failed > 0 ? ", ${"失败".tl}: ${batch.failed}" : ""}",
+              ),
+            ),
+          if (logic.translateAll && pageKey != null)
+            SimpleDialogOption(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                await service.forget(pageKey);
+                // Drop the copies held in memory so the page loads again.
+                BaseImageProvider.clearCache();
+                PaintingBinding.instance.imageCache.clear();
+                PaintingBinding.instance.imageCache.clearLiveImages();
+                logic.update();
+              },
+              child: Text("重新翻译这一页".tl),
+            ),
+          SimpleDialogOption(
+            onPressed: () {
+              Navigator.of(context).pop();
+              App.globalTo(() => const TranslationSettingsPage());
+            },
+            child: Text("翻译设置".tl),
+          ),
+        ],
+      ),
+    );
   }
 
   void share() async {

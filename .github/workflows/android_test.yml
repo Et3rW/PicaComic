@@ -1,8 +1,12 @@
 name: Build Android Test APK
-run-name: Android test APK - ${{ github.sha }}
+run-name: Android test APK ${{ inputs.test_number }} - ${{ github.sha }}
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      test_number:
+        description: 'Test build number since the last release, 1-15 (3 after 5.2.0 makes 5.2.3, 10 makes 5.2.a)'
+        required: true
 
 permissions:
   contents: read
@@ -22,6 +26,27 @@ jobs:
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+\+[0-9]+$ ]] || { echo "Unexpected version: $version"; exit 1; }
           echo "APP_VERSION=${version%%+*}" >> "$GITHUB_ENV"
           echo "APP_BUILD=${version##*+}" >> "$GITHUB_ENV"
+      - name: Read test build number
+        env:
+          TEST_NUMBER: ${{ inputs.test_number }}
+        run: |
+          # pubspec.yaml holds the last release, x.y.0. The test builds after it
+          # are x.y.1 to x.y.f: the last digit counts them in hexadecimal, so
+          # there can be 15 between two releases, while releases count in
+          # decimal (5.2.0, 5.3.0). Before the first such release (5.2.0) test
+          # builds carry a fourth number instead: 5.1.9.5.
+          IFS=. read -r major minor patch <<< "$APP_VERSION"
+          if [[ "$patch" == 0 ]]; then
+            [[ "$TEST_NUMBER" =~ ^([1-9]|1[0-5])$ ]] || { echo "Test number must be 1-15 (shown as 1-f), got: $TEST_NUMBER"; exit 1; }
+            test_version="$major.$minor.$(printf '%x' "$TEST_NUMBER")"
+          else
+            [[ "$TEST_NUMBER" =~ ^[1-9][0-9]?$ ]] || { echo "Test number must be 1-99, got: $TEST_NUMBER"; exit 1; }
+            test_version="$APP_VERSION.$TEST_NUMBER"
+          fi
+          echo "Test build $test_version"
+          echo "PICA_TEST_NUMBER=$TEST_NUMBER" >> "$GITHUB_ENV"
+          echo "PICA_TEST_VERSION=$test_version" >> "$GITHUB_ENV"
+          echo "TEST_VERSION=$test_version" >> "$GITHUB_ENV"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -31,30 +56,61 @@ jobs:
           flutter-version: '3.47.0'
           channel: stable
           cache: true
+      - name: Configure fixed test signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_TEST_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_TEST_KEYSTORE_PASSWORD }}
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, base64
+          os.umask(0o077)
+          encoded = os.environ['KEYSTORE_BASE64']
+          password = os.environ['KEYSTORE_PASSWORD']
+          if not encoded or not password:
+              # Forks without the secrets still build, with a throwaway key.
+              print('::warning::No test signing key; this build cannot install over an earlier test build.')
+              raise SystemExit
+          keystore = pathlib.Path(os.environ['RUNNER_TEMP']) / 'pica-test.p12'
+          with keystore.open('xb') as f:
+              f.write(base64.b64decode(encoded, validate=True))
+          with pathlib.Path('android/test-key.properties').open('x') as f:
+              f.write(f'storeFile={keystore}\nstoreType=PKCS12\nkeyAlias=pica-test\nstorePassword={password}\nkeyPassword={password}\n')
+          with open(os.environ['GITHUB_ENV'], 'a') as env:
+              env.write('PICA_TEST_SIGNING=fixed\n')
+          PY
       - name: Install locked dependencies
         run: flutter pub get --enforce-lockfile
       - name: Tests
         run: flutter test --no-pub
       - name: Build release-mode test APK
-        run: flutter build apk --release --no-pub --target-platform android-arm64,android-x64
+        run: flutter build apk --release --no-pub --target-platform android-arm64,android-x64 --dart-define=PICA_TEST_NUMBER=$PICA_TEST_NUMBER --dart-define=PICA_TEST_VERSION=$PICA_TEST_VERSION
       - name: Verify and package APK
         shell: bash
         run: |
           mkdir -p dist
-          apk="PicaComic-$APP_VERSION-test.apk"
+          apk="PicaComic-$TEST_VERSION-test.apk"
           cp build/app/outputs/flutter-apk/app-release.apk "dist/$apk"
           build_tools=$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)
-          "$ANDROID_HOME/build-tools/$build_tools/apksigner" verify --verbose "dist/$apk"
+          signature=$("$ANDROID_HOME/build-tools/$build_tools/apksigner" verify --verbose --print-certs "dist/$apk")
+          echo "$signature"
+          if [[ "$PICA_TEST_SIGNING" == fixed ]]; then
+            # Every test build is signed by this certificate, so a newer test
+            # build of the same version installs over the older one.
+            expected_cert=b0c88322130e114c4ed2cce5533c2eb9e87c7ecaddd0b43025bcae3cfdcf22c5
+            digests=$(grep -E 'certificate SHA-256 digest:' <<< "$signature" | sed -E 's/.*digest: //; s/://g' | tr 'A-F' 'a-f' | sort -u)
+            [[ "$digests" == "$expected_cert" ]] || { echo "Unexpected signing certificate: $digests"; exit 1; }
+          fi
           badging=$("$ANDROID_HOME/build-tools/$build_tools/aapt" dump badging "dist/$apk")
           echo "$badging"
           # The test app must install next to the released one, never over it.
-          expected="package: name='com.github.pacalini.pica_comic.test${APP_VERSION//./}' versionCode='$APP_BUILD' versionName='$APP_VERSION'"
+          # Later test builds of a version install over earlier ones.
+          expected="package: name='com.github.pacalini.pica_comic.test519' versionCode='$((APP_BUILD * 100 + PICA_TEST_NUMBER))' versionName='$TEST_VERSION'"
           grep -qF "$expected" <<< "$badging" || { echo "Unexpected package/version, wanted: $expected"; exit 1; }
           cd dist
           sha256sum "$apk" > SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: PicaComic-${{ env.APP_VERSION }}-test-apk
+          name: PicaComic-${{ env.TEST_VERSION }}-test-apk
           path: dist/
           if-no-files-found: error
           retention-days: 30

@@ -58,6 +58,17 @@ class ComicReadingPageLogic extends StateController {
 
   List<bool> requestedLoadingItems = [];
 
+  /// Whether pages are shown translated. Off when the reader opens; the
+  /// translate button turns it on for the whole comic.
+  bool translateAll = false;
+
+  /// Translates the pages of the current chapter ahead of the reader while
+  /// [translateAll] is on.
+  BatchTranslation? translationBatch;
+
+  /// Whether page [index] (0-based) of the current chapter is shown translated.
+  bool isTranslated(int index) => translateAll;
+
   bool haveUsedInitialPage = false;
 
   /// 双页模式下是否在第一页时显示单页
@@ -364,4 +375,8 @@ class ComicReadingPageLogic extends StateController {
   }
 
   late final void Function() openEpsView;
+
+  /// Translates the current chapter again from the page being read, after
+  /// the translation settings changed.
+  late final void Function() restartTranslation;
 }

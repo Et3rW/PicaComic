@@ -14,6 +14,8 @@ import android.net.Uri
 import android.os.Environment
 import android.Manifest
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
+import java.io.File
 import com.google.android.gms.common.GoogleApiAvailability
 
 class MainActivity: FlutterFragmentActivity() {
@@ -72,6 +74,36 @@ class MainActivity: FlutterFragmentActivity() {
                 _, res ->
             val flag = GoogleApiAvailability.getInstance().isGooglePlayServicesAvailable(this) == com.google.android.gms.common.ConnectionResult.SUCCESS
             res.success(flag)
+        }
+
+        // Hands a downloaded update to the system installer. Without the
+        // "install unknown apps" permission it opens that setting instead and
+        // reports "permission", so the user can allow it and try again.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger,"pica_comic/update").setMethodCallHandler{
+                call, res ->
+            if (call.method != "install") {
+                res.notImplemented()
+                return@setMethodCallHandler
+            }
+            try {
+                val path = call.argument<String>("path")!!
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
+                    startActivity(Intent(
+                        android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                        Uri.parse("package:$packageName"),
+                    ))
+                    res.success("permission")
+                    return@setMethodCallHandler
+                }
+                val uri = FileProvider.getUriForFile(this, "$packageName.update_provider", File(path))
+                val intent = Intent(Intent.ACTION_VIEW)
+                    .setDataAndType(uri, "application/vnd.android.package-archive")
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(intent)
+                res.success("started")
+            } catch (e: Exception) {
+                res.error("install", e.message, null)
+            }
         }
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger,"pica_comic/settings").setMethodCallHandler{

@@ -23,11 +23,29 @@ if (flutterVersionName == null) {
 }
 
 
-def keystorePropertiesFile = rootProject.file("key.properties")
-def keystoreProperties = new Properties()
 def isTestBuild = System.getenv("PICA_TEST_BUILD") == "true"
 def isReleaseBuild = System.getenv("PICA_RELEASE_BUILD") == "true"
-if (keystorePropertiesFile.exists()) {
+// Test builds are signed with the fixed test key in test-key.properties, so a
+// newer test build of the same version installs over the older one. Without
+// that file they fall back to the machine's debug key.
+// Test builds are numbered since the last release: 5.2.3 is the third test
+// build after 5.2.0. The workflow works out the name (PICA_TEST_VERSION, see
+// doc/releasing.md); without it the number is appended: 5.1.9.3.
+def testNumber = isTestBuild ? (System.getenv("PICA_TEST_NUMBER") ?: "") : ""
+if (testNumber && !(testNumber ==~ /[1-9][0-9]?/)) {
+    throw new GradleException("PICA_TEST_NUMBER must be a number from 1 to 99, not '${testNumber}'.")
+}
+def testVersion = System.getenv("PICA_TEST_VERSION") ?: "${flutterVersionName}.${testNumber}"
+def appVersionName = testNumber ? testVersion : flutterVersionName
+// Each test build gets a higher version code than the last, so it installs
+// as an update of it.
+def appVersionCode = testNumber
+        ? flutterVersionCode.toInteger() * 100 + testNumber.toInteger()
+        : flutterVersionCode.toInteger()
+def keystorePropertiesFile = rootProject.file(isTestBuild ? "test-key.properties" : "key.properties")
+def keystoreProperties = new Properties()
+def hasSigningKey = keystorePropertiesFile.exists()
+if (hasSigningKey) {
     keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
 } else if (!isTestBuild) {
     throw new GradleException("Release signing requires android/key.properties. For a separate test app, set PICA_TEST_BUILD=true.")
@@ -43,6 +61,21 @@ android {
             include 'arm64-v8a', 'x86_64'
             enable !(isTestBuild || isReleaseBuild)
             universalApk true
+        }
+    }
+
+    // Flutter is built for arm64-v8a and x86_64 only. onnxruntime-android also
+    // brings armeabi-v7a libraries (about 14 MB) that no device could use
+    // without Flutter's own libraries for that ABI. Its x86_64 libraries
+    // (about 23 MB) are left out too: they would serve emulators and a few
+    // x86 devices, where page translation then reports itself unsupported.
+    packaging {
+        jniLibs {
+            excludes += [
+                'lib/armeabi-v7a/**',
+                'lib/x86_64/libonnxruntime.so',
+                'lib/x86_64/libonnxruntime4j_jni.so',
+            ]
         }
     }
 
@@ -62,24 +95,25 @@ android {
 
     defaultConfig {
         applicationId isTestBuild ? "com.github.pacalini.pica_comic" : "com.github.et3rw.pica_comic"
-        // Each version's test build is its own app (e.g. ".test517" for 5.1.7),
-        // named after the version in pubspec.yaml.
+        // Every test build is the same app, next to the released one: a later
+        // test build installs over an earlier one, whatever its version. The
+        // suffix stays ".test519", the one the 5.1.9 test builds started with.
         if (isTestBuild) {
-            applicationIdSuffix ".test" + flutterVersionName.replace(".", "")
+            applicationIdSuffix ".test519"
         }
-        manifestPlaceholders["appLabel"] = isTestBuild ? "Pica Comic 测试版 ${flutterVersionName}" : "Pica Comic"
+        manifestPlaceholders["appLabel"] = isTestBuild ? "Pica Comic 测试版 ${appVersionName}" : "Pica Comic"
         // You can update the following values to match your application needs.
         // For more information, see: https://docs.flutter.dev/deployment/android#reviewing-the-gradle-build-configuration.
         minSdkVersion flutter.minSdkVersion
         targetSdk flutter.targetSdkVersion
-        versionCode flutterVersionCode.toInteger()
-        versionName flutterVersionName
+        versionCode appVersionCode
+        versionName appVersionName
         multiDexEnabled true
     }
 
     signingConfigs {
         debug {
-            if (!isTestBuild) {
+            if (hasSigningKey) {
                 storeType keystoreProperties.getProperty('storeType', 'JKS')
                 storeFile file(keystoreProperties['storeFile'])
                 storePassword keystoreProperties['storePassword']
@@ -88,7 +122,7 @@ android {
             }
         }
         release {
-            if (!isTestBuild) {
+            if (hasSigningKey) {
                 storeType keystoreProperties.getProperty('storeType', 'JKS')
                 keyAlias keystoreProperties['keyAlias']
                 keyPassword keystoreProperties['keyPassword']
@@ -101,7 +135,7 @@ android {
     buildTypes {
         release {
             // Test packages use a separate app ID and cannot overwrite the user's app.
-            signingConfig isTestBuild ? signingConfigs.debug : signingConfigs.release
+            signingConfig isTestBuild && !hasSigningKey ? signingConfigs.debug : signingConfigs.release
             applicationVariants.all { variant ->
                 variant.outputs.all { output ->
                     def abi = output.getFilter(com.android.build.OutputFile.ABI)
@@ -126,4 +160,8 @@ flutter {
 dependencies {
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'
     implementation 'com.google.android.gms:play-services-base:18.3.0'
+    // Runs the OCR models of page translation. Loaded from Dart through FFI
+    // (lib/foundation/page_translation/ort.dart); only its libonnxruntime.so
+    // is used.
+    implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.23.0'
 }

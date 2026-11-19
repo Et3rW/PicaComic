@@ -58,13 +58,28 @@ abstract class ReadingData {
     }
   }
 
-  ImageProvider createImageProvider(int ep, int page, String url){
+  /// With [translate], the page goes through page translation after it has
+  /// loaded; a page that cannot be translated is shown as it is.
+  ImageProvider createImageProvider(int ep, int page, String url,
+      {bool translate = false}) {
+    if (translate) {
+      // Identifies the page itself, not its address: some sources hand out a
+      // new address for the same image on every visit.
+      var pageKey = translationKey(ep, page);
+      var service = PageTranslationService.instance;
+      return StreamImageProvider(
+          () => service.wrap(loadImage(ep, page, url), pageKey),
+          service.keyFor(pageKey));
+    }
     if (downloaded && checkEpDownloaded(ep)){
       return FileImageProvider(downloadId, hasEp ? ep : 0, page);
     } else {
       return StreamImageProvider(() => loadImage(ep, page, url), buildImageKey(ep, page, url));
     }
   }
+
+  /// Key of page [page] of chapter [ep] for page translation.
+  String translationKey(int ep, int page) => "$sourceKey@$downloadId@$ep@$page";
 
   String buildImageKey(int ep, int page, String url) => url;
 

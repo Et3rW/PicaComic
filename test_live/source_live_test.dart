@@ -24,6 +24,7 @@ import 'package:pica_comic/network/cookie_jar.dart';
 import 'package:pica_comic/network/eh_network/eh_main_network.dart';
 import 'package:pica_comic/network/hitomi_network/hitomi_main_network.dart';
 import 'package:pica_comic/network/htmanga_network/htmanga_main_network.dart';
+import 'package:pica_comic/network/htmanga_network/models.dart';
 import 'package:pica_comic/network/jm_network/jm_network.dart';
 import 'package:pica_comic/network/nhentai_network/nhentai_main_network.dart';
 import 'package:pica_comic/network/picacg_network/headers.dart' as picacg;
@@ -137,16 +138,25 @@ void main() {
 
     final list = need(await network.getComicList('$base/albums.html', 1), 'list');
     expect(list, isNotEmpty, reason: 'no galleries in the list');
-    final first = list.first;
-    expect(first.name, isNotEmpty);
-    expect(int.parse(first.id), greaterThan(0));
+    // A series (合集) lists its chapters, which are galleries of their own,
+    // and has no pages itself: check the first ordinary gallery.
+    HtComicBrief? first;
+    HtComicInfo? info;
+    for (final comic in list.take(6)) {
+      expect(comic.name, isNotEmpty);
+      expect(int.parse(comic.id), greaterThan(0));
+      final candidate = need(await network.getComicInfo(comic.id), 'gallery');
+      expect(candidate.name, isNotEmpty);
+      if (candidate.thumbnails.isNotEmpty) {
+        first = comic;
+        info = candidate;
+        break;
+      }
+    }
+    expect(first, isNotNull, reason: 'no gallery with thumbnails among the first six');
+    expect(info!.pages, greaterThan(0));
 
-    final info = need(await network.getComicInfo(first.id), 'gallery');
-    expect(info.name, isNotEmpty);
-    expect(info.pages, greaterThan(0));
-    expect(info.thumbnails, isNotEmpty);
-
-    final images = need(await network.getImages(first.id), 'image list');
+    final images = need(await network.getImages(first!.id), 'image list');
     expect(images, isNotEmpty, reason: 'no images for gallery ${first.id}');
     await expectLoads(ImageManager().getImage(images.first));
   });

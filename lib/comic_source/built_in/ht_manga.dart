@@ -7,6 +7,7 @@ import 'package:pica_comic/foundation/image_loader/cached_image.dart';
 import 'package:pica_comic/foundation/local_favorites.dart';
 import 'package:pica_comic/network/htmanga_network/htmanga_main_network.dart';
 import 'package:pica_comic/network/htmanga_network/models.dart';
+import 'package:pica_comic/network/htmanga_network/web_login.dart';
 import 'package:pica_comic/network/res.dart';
 import 'package:pica_comic/pages/comic_page.dart';
 import 'package:pica_comic/pages/htmanga/ht_comic_page.dart';
@@ -136,16 +137,17 @@ final htManga = ComicSource.named(
   ),
   account: AccountConfig.named(
     registerWebsite: "https://www.wnacg.com/albums.html",
-    login: (account, pwd) async {
-      var htManga = ComicSource.find('htmanga')!;
-      var res = await HtmangaNetwork().login(account, pwd);
-      if (!res.error) {
-        htManga.data['name'] = account;
+    // The site asks for a slider puzzle, so the user logs in on its own page
+    // and the app keeps the cookies. There is no password to log in again
+    // with: when the session ends, the user logs in on the page again.
+    onLogin: (context) async {
+      if (await htWebLogin()) {
+        var htManga = ComicSource.find('htmanga')!;
+        htManga.data['account'] = 'web';
+        await htManga.saveData();
       }
-      var a = <String>[account, pwd];
-      htManga.data['account'] = a;
-      return res;
     },
+    allowReLogin: false,
     logout: () {
       ComicSource.find('htmanga')!.data['name'] = null;
       HtmangaNetwork().logout();

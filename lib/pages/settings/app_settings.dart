@@ -10,27 +10,7 @@ void findUpdate(BuildContext context) {
       getUpdatesInfo().then((s) {
         if (!context.mounted) return;
         if (s != null) {
-          showDialog(
-              context: context,
-              builder: (context) {
-                return AlertDialog(
-                  title: Text("有可用更新".tl),
-                  content: Text(s),
-                  actions: [
-                    TextButton(
-                        onPressed: () => App.globalBack(),
-                        child: Text("取消".tl)),
-                    TextButton(
-                        onPressed: () {
-                          getDownloadUrl().then((s) {
-                            launchUrlString(s,
-                                mode: LaunchMode.externalApplication);
-                          });
-                        },
-                        child: Text("下载".tl))
-                  ],
-                );
-              });
+          showUpdateDialog(context, s);
         } else {
           context.showMessage(message: "网络错误".tl);
         }

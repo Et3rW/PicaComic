@@ -7,6 +7,7 @@ import 'package:pica_comic/foundation/log.dart';
 import 'package:pica_comic/network/cache_network.dart';
 import 'package:pica_comic/network/cookie_jar.dart';
 import 'package:pica_comic/network/htmanga_network/models.dart';
+import 'package:pica_comic/network/htmanga_network/web_login.dart';
 import 'package:pica_comic/network/app_dio.dart';
 import 'package:pica_comic/network/res.dart';
 import 'package:html/parser.dart';
@@ -98,6 +99,13 @@ class HtmangaNetwork {
     } catch (e) {
       return Res(null, errorMessage: e.toString());
     }
+  }
+
+  /// Whether the saved cookies are a logged-in session: an account page is
+  /// served instead of the login page or "需要登錄".
+  Future<bool> checkLogin() async {
+    var res = await get("$baseUrl/users-users_fav.html", cache: false);
+    return !res.error && htLoggedIn(res.data);
   }
 
   Future<Res<bool>> loginFromAppdata() async {
