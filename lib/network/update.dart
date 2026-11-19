@@ -66,7 +66,7 @@ bool get isTestBuild => testBuildNumber > 0;
 /// The version this build compares with: 5.1.9.3 for a test build.
 String get currentVersion => isTestBuild ? appVersionLabel : appVersion;
 
-/// Compares dotted version numbers as numbers: 5.1.10 is above 5.1.9 and
+/// Compares dotted version numbers as numbers: 5.2.0 is above 5.1.9 and
 /// 5.1.9.1 above 5.1.9. Returns a positive number when [a] is newer.
 int compareVersions(String a, String b) {
   List<int> parts(String v) => [

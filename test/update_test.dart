@@ -80,7 +80,8 @@ F972208CD5B8158FC1306EFDE8C8884A6E62A0E37035D49B99E1CC7B147FBE47 *PicaComic-5.1.
   });
 
   test('versions compare by their numbers', () {
-    expect(compareVersions('5.1.10', '5.1.9'), greaterThan(0));
+    expect(compareVersions('5.2.0', '5.1.9'), greaterThan(0));
+    expect(compareVersions('6.0.0', '5.9.9'), greaterThan(0));
     expect(compareVersions('5.1.9.10', '5.1.9.3'), greaterThan(0));
     expect(compareVersions('5.1.9.1', '5.1.9'), greaterThan(0));
     expect(compareVersions('5.1.9', '5.1.9.0'), 0);
@@ -91,12 +92,12 @@ F972208CD5B8158FC1306EFDE8C8884A6E62A0E37035D49B99E1CC7B147FBE47 *PicaComic-5.1.
     final releases = [
       {'tag_name': 'v5.1.9.3', 'prerelease': true},
       {'tag_name': 'v5.1.9-test.2', 'prerelease': true},
-      {'tag_name': 'v5.1.10.1', 'prerelease': true},
+      {'tag_name': 'v5.2.0.1', 'prerelease': true},
       {'tag_name': 'v5.1.9.12', 'prerelease': true, 'draft': true},
       {'tag_name': 'v5.1.8', 'prerelease': false},
       {'tag_name': 'v5.1.9.4', 'prerelease': false},
     ];
-    expect(newestTestRelease(releases)!['tag_name'], 'v5.1.10.1');
+    expect(newestTestRelease(releases)!['tag_name'], 'v5.2.0.1');
     expect(newestTestRelease([releases[1], releases[4]]), isNull);
     expect(newestTestRelease(null), isNull);
   });
