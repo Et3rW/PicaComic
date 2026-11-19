@@ -20,7 +20,7 @@ const String webUA =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36";
 
 //App版本
-const appVersion = "5.1.9";
+const appVersion = "5.2.0";
 
 /// Order of a test build since the last release, given to the build with
 /// `--dart-define=PICA_TEST_NUMBER=3`; 0 for releases.
