@@ -67,10 +67,12 @@ bool get isTestBuild => testBuildNumber > 0;
 String get currentVersion => isTestBuild ? appVersionLabel : appVersion;
 
 /// Compares dotted version numbers as numbers: 5.2.0 is above 5.1.9 and
-/// 5.1.9.1 above 5.1.9. Returns a positive number when [a] is newer.
+/// 5.1.9.1 above 5.1.9. A test build's last digit is hexadecimal, so 5.2.a
+/// is above 5.2.9. Returns a positive number when [a] is newer.
 int compareVersions(String a, String b) {
   List<int> parts(String v) => [
-        for (var part in v.split('.')) int.tryParse(part) ?? 0,
+        for (var part in v.split('.'))
+          int.tryParse(part) ?? int.tryParse(part, radix: 16) ?? 0,
       ];
   var x = parts(a), y = parts(b);
   for (var i = 0; i < x.length || i < y.length; i++) {
@@ -80,8 +82,9 @@ int compareVersions(String a, String b) {
   return 0;
 }
 
-/// Test builds are pre-releases tagged with four numbers (v5.1.9.3). The
-/// newest of [releases], a list from the GitHub API, or null.
+/// Test builds are pre-releases tagged v5.2.3 (the third test build after
+/// 5.2.0, its last digit 1-f), or with four numbers before 5.2.0 (v5.1.9.3).
+/// The newest of [releases], a list from the GitHub API, or null.
 Map? newestTestRelease(Object? releases) {
   Map? newest;
   String? newestVersion;
@@ -91,7 +94,8 @@ Map? newestTestRelease(Object? releases) {
     if (release['draft'] == true) continue;
     var tag = release['tag_name'];
     if (tag is! String) continue;
-    var match = RegExp(r'^v(\d+\.\d+\.\d+\.\d+)$').firstMatch(tag);
+    var match = RegExp(r'^v(\d+\.\d+\.\d+\.\d+|\d+\.\d+\.[1-9a-f])$')
+        .firstMatch(tag);
     if (match == null) continue;
     var version = match[1]!;
     if (newestVersion == null || compareVersions(version, newestVersion) > 0) {

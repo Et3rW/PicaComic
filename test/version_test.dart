@@ -18,10 +18,10 @@ void main() {
     expect(appVersion, name);
   });
 
-  // Versions count in decimal: each of the three numbers is one digit, and
-  // 5.1.9 is followed by 5.2.0. The build number is the three digits after
-  // the major version's thousands, so it grows with every version:
-  // 5.1.9 is 5019, 5.2.0 is 5020.
+  // Releases count in decimal: each of the three numbers is one digit, and
+  // from 5.2.0 on a release ends in 0 (5.2.0, 5.3.0); the last digit counts
+  // the test builds after it (doc/releasing.md). The build number follows
+  // the version, so it grows with every release: 5.2.0 is 5020.
   test('the version is decimal and the build number follows it', () {
     final line = File('pubspec.yaml')
         .readAsLinesSync()
@@ -35,6 +35,9 @@ void main() {
     expect(minor, inInclusiveRange(0, 9), reason: 'after x.9.y comes (x+1).0.0');
     expect(patch, inInclusiveRange(0, 9), reason: 'after x.y.9 comes x.(y+1).0');
     expect(build, major * 1000 + minor * 10 + patch);
+    if (major * 10 + minor >= 52) {
+      expect(patch, 0, reason: 'releases end in 0; the last digit is for test builds');
+    }
   });
 
   test('a build without a test number shows the plain version', () {

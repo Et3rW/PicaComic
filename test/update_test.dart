@@ -26,6 +26,8 @@ void main() {
       final update = androidUpdateIn(testFiles, '5.1.9.3', test: true)!;
       expect(update.apk.name, 'PicaComic-5.1.9.3-test.apk');
       expect(update.checksums!.name, 'SHA256SUMS.txt');
+      const hex = [UpdateFile('PicaComic-5.2.a-test.apk', 'https://x/a', 8)];
+      expect(androidUpdateIn(hex, '5.2.a', test: true)!.apk.url, 'https://x/a');
     });
 
     test('neither takes the other channel\'s APK', () {
@@ -86,19 +88,28 @@ F972208CD5B8158FC1306EFDE8C8884A6E62A0E37035D49B99E1CC7B147FBE47 *PicaComic-5.1.
     expect(compareVersions('5.1.9.1', '5.1.9'), greaterThan(0));
     expect(compareVersions('5.1.9', '5.1.9.0'), 0);
     expect(compareVersions('5.1.8', '5.1.9.3'), lessThan(0));
+    // Test builds after a release count in hexadecimal.
+    expect(compareVersions('5.2.a', '5.2.9'), greaterThan(0));
+    expect(compareVersions('5.2.f', '5.2.a'), greaterThan(0));
+    expect(compareVersions('5.2.1', '5.1.9.4'), greaterThan(0));
+    expect(compareVersions('5.3.0', '5.2.f'), greaterThan(0));
   });
 
-  test('a test build looks for the newest four-number pre-release', () {
+  test('a test build looks for the newest test pre-release', () {
     final releases = [
       {'tag_name': 'v5.1.9.3', 'prerelease': true},
       {'tag_name': 'v5.1.9-test.2', 'prerelease': true},
-      {'tag_name': 'v5.2.0.1', 'prerelease': true},
-      {'tag_name': 'v5.1.9.12', 'prerelease': true, 'draft': true},
-      {'tag_name': 'v5.1.8', 'prerelease': false},
-      {'tag_name': 'v5.1.9.4', 'prerelease': false},
+      {'tag_name': 'v5.2.9', 'prerelease': true},
+      {'tag_name': 'v5.2.a', 'prerelease': true},
+      {'tag_name': 'v5.2.b', 'prerelease': true, 'draft': true},
+      {'tag_name': 'v5.2.0', 'prerelease': false},
+      {'tag_name': 'v5.2.c', 'prerelease': false},
     ];
-    expect(newestTestRelease(releases)!['tag_name'], 'v5.2.0.1');
-    expect(newestTestRelease([releases[1], releases[4]]), isNull);
+    expect(newestTestRelease(releases)!['tag_name'], 'v5.2.a');
+    // Before 5.2.0, four numbers.
+    expect(newestTestRelease([releases[0], releases[1]])!['tag_name'],
+        'v5.1.9.3');
+    expect(newestTestRelease([releases[1], releases[5]]), isNull);
     expect(newestTestRelease(null), isNull);
   });
 

@@ -76,7 +76,7 @@ Pica Comic 是一个用 Flutter 编写的多漫画源阅读器。本仓库 fork 
 - **iOS**：`PicaComic-<版本>-unsigned.ipa`，未签名，需要用自己的方式签名安装。
 - **macOS**：`PicaComic-<版本>-macos-universal.zip`，支持 Apple 芯片和 Intel。没有经过 Apple 公证，第一次打开时可能被系统拦截。
 
-标着 Pre-release 的是测试版，版本号多一位，表示这是该版本的第几个测试版，例如 5.1.9.3 是 5.1.9 的第 3 个测试版。测试版的包名和正式版不同，可以同时安装；新的测试版可以直接覆盖旧的测试版。也可以用 [Obtainium](INSTALL.md#obtainium) 从 GitHub 自动获取更新。
+标着 Pre-release 的是测试版。正式版的版本号末位是 0（5.2.0、5.3.0），测试版的末位表示这是上次正式版之后的第几个测试版，按 1 到 9、a 到 f 数，例如 5.2.3 是 5.2.0 之后的第 3 个测试版。测试版的包名和正式版不同，可以同时安装；新的测试版可以直接覆盖旧的测试版。也可以用 [Obtainium](INSTALL.md#obtainium) 从 GitHub 自动获取更新。
 
 ### 内置漫画源
 

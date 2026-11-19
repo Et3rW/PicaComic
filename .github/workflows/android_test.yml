@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       test_number:
-        description: 'Test build number within this version (3 makes 5.1.9.3)'
+        description: 'Test build number since the last release, 1-15 (3 after 5.2.0 makes 5.2.3, 10 makes 5.2.a)'
         required: true
 
 permissions:
@@ -30,9 +30,23 @@ jobs:
         env:
           TEST_NUMBER: ${{ inputs.test_number }}
         run: |
-          [[ "$TEST_NUMBER" =~ ^[1-9][0-9]?$ ]] || { echo "Test number must be 1-99, got: $TEST_NUMBER"; exit 1; }
+          # pubspec.yaml holds the last release, x.y.0. The test builds after it
+          # are x.y.1 to x.y.f: the last digit counts them in hexadecimal, so
+          # there can be 15 between two releases, while releases count in
+          # decimal (5.2.0, 5.3.0). Before the first such release (5.2.0) test
+          # builds carry a fourth number instead: 5.1.9.5.
+          IFS=. read -r major minor patch <<< "$APP_VERSION"
+          if [[ "$patch" == 0 ]]; then
+            [[ "$TEST_NUMBER" =~ ^([1-9]|1[0-5])$ ]] || { echo "Test number must be 1-15 (shown as 1-f), got: $TEST_NUMBER"; exit 1; }
+            test_version="$major.$minor.$(printf '%x' "$TEST_NUMBER")"
+          else
+            [[ "$TEST_NUMBER" =~ ^[1-9][0-9]?$ ]] || { echo "Test number must be 1-99, got: $TEST_NUMBER"; exit 1; }
+            test_version="$APP_VERSION.$TEST_NUMBER"
+          fi
+          echo "Test build $test_version"
           echo "PICA_TEST_NUMBER=$TEST_NUMBER" >> "$GITHUB_ENV"
-          echo "TEST_VERSION=$APP_VERSION.$TEST_NUMBER" >> "$GITHUB_ENV"
+          echo "PICA_TEST_VERSION=$test_version" >> "$GITHUB_ENV"
+          echo "TEST_VERSION=$test_version" >> "$GITHUB_ENV"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -69,7 +83,7 @@ jobs:
       - name: Tests
         run: flutter test --no-pub
       - name: Build release-mode test APK
-        run: flutter build apk --release --no-pub --target-platform android-arm64,android-x64 --dart-define=PICA_TEST_NUMBER=$PICA_TEST_NUMBER
+        run: flutter build apk --release --no-pub --target-platform android-arm64,android-x64 --dart-define=PICA_TEST_NUMBER=$PICA_TEST_NUMBER --dart-define=PICA_TEST_VERSION=$PICA_TEST_VERSION
       - name: Verify and package APK
         shell: bash
         run: |

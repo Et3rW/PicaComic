@@ -22,14 +22,21 @@ const String webUA =
 //App版本
 const appVersion = "5.1.9";
 
-/// Order of a test build within its version, given to the build with
+/// Order of a test build since the last release, given to the build with
 /// `--dart-define=PICA_TEST_NUMBER=3`; 0 for releases.
 const testBuildNumber = int.fromEnvironment('PICA_TEST_NUMBER');
 
-/// The version shown in the app: 5.1.9.3 for the third test build of 5.1.9.
-/// Update checks compare [appVersion].
-const appVersionLabel =
-    testBuildNumber > 0 ? "$appVersion.$testBuildNumber" : appVersion;
+/// A test build's version, given with `--dart-define=PICA_TEST_VERSION=5.2.3`
+/// (see doc/releasing.md).
+const _testVersion = String.fromEnvironment('PICA_TEST_VERSION');
+
+/// The version shown in the app: 5.2.3 for the third test build after 5.2.0.
+/// Release update checks compare [appVersion].
+const appVersionLabel = testBuildNumber <= 0
+    ? appVersion
+    : _testVersion != ""
+        ? _testVersion
+        : "$appVersion.$testBuildNumber";
 
 //定义宽屏设备的临界值
 const changePoint = 600;
