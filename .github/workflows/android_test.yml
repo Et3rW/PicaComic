@@ -90,7 +90,7 @@ jobs:
           echo "$badging"
           # The test app must install next to the released one, never over it.
           # Later test builds of a version install over earlier ones.
-          expected="package: name='com.github.pacalini.pica_comic.test${APP_VERSION//./}' versionCode='$((APP_BUILD * 100 + PICA_TEST_NUMBER))' versionName='$TEST_VERSION'"
+          expected="package: name='com.github.pacalini.pica_comic.test519' versionCode='$((APP_BUILD * 100 + PICA_TEST_NUMBER))' versionName='$TEST_VERSION'"
           grep -qF "$expected" <<< "$badging" || { echo "Unexpected package/version, wanted: $expected"; exit 1; }
           cd dist
           sha256sum "$apk" > SHA256SUMS.txt

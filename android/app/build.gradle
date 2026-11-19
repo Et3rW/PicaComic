@@ -93,10 +93,11 @@ android {
 
     defaultConfig {
         applicationId isTestBuild ? "com.github.pacalini.pica_comic" : "com.github.et3rw.pica_comic"
-        // Each version's test build is its own app (e.g. ".test517" for 5.1.7),
-        // named after the version in pubspec.yaml.
+        // Every test build is the same app, next to the released one: a later
+        // test build installs over an earlier one, whatever its version. The
+        // suffix stays ".test519", the one the 5.1.9 test builds started with.
         if (isTestBuild) {
-            applicationIdSuffix ".test" + flutterVersionName.replace(".", "")
+            applicationIdSuffix ".test519"
         }
         manifestPlaceholders["appLabel"] = isTestBuild ? "Pica Comic 测试版 ${appVersionName}" : "Pica Comic"
         // You can update the following values to match your application needs.
