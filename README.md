@@ -56,6 +56,7 @@ Pica Comic has 6 built-in comic sources:
 - Manage local favorites and network favorites
 - Data sync(using webdav)
 - Reading history
+- In-app updates: on Android the update is downloaded, checked and installed from the app; test builds follow test builds
 - Page translation (Android): text on a page is recognized on the device and sent to a translation service of your choice (OpenAI-compatible APIs, Claude, Gemini or Google Translate), then drawn back over the page. Nothing is translated until you tap the translate button; then the whole comic is shown translated, with each chapter translated in the background from the page you are on. See [doc/page-translation.md](doc/page-translation.md).
 
 ### History
@@ -92,6 +93,7 @@ Pica Comic 是一个用 Flutter 编写的多漫画源阅读器。本仓库 fork 
 - 下载漫画，离线阅读
 - 本地收藏和网络收藏
 - 阅读历史
+- 应用内检查更新；Android 上可以直接在应用里下载并安装，测试版只更新到测试版
 - 通过 WebDAV 同步数据
 - e-hentai、nhentai 点击标签时可以叠加多个标签一起搜索
 - **图片翻译（仅 Android）**：在本机识别页面上的文字，只把文字发给你选择的翻译服务，再把译文画回原处。支持 OpenAI 兼容接口（DeepSeek、通义千问、智谱 GLM、Kimi、豆包、硅基流动、OpenRouter、Ollama 等）、Claude、Gemini，以及不需要 key 的 Google 翻译。页面默认显示原图，点工具栏的翻译按钮后整本显示译文，从当前页开始在后台把每一章依次翻译完。详见 [doc/page-translation.md](doc/page-translation.md)。

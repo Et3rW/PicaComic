@@ -15,6 +15,10 @@
 
 在功能分支上手动运行 **Build Android Test APK**，填入这是该版本的第几个测试版（`gh workflow run android_test.yml --ref <分支> -f test_number=3`）。测试版的版本号是四位：5.1.9 的第 3 个测试版是 5.1.9.3，安装包叫 `PicaComic-5.1.9.3-test.apk`，应用名“Pica Comic 测试版 5.1.9.3”，版本代码是 `pubspec.yaml` 里的构建号乘 100 再加序号（501903），所以后一个测试版总能作为更新装在前一个上面。正式版仍是三位版本号。预发布的标签用 `v5.1.9.3`。测试版包名带版本后缀，和正式版并存，不会覆盖正式版的数据。测试版用一把固定的测试签名（证书 SHA-256 `b0c88322130e114c4ed2cce5533c2eb9e87c7ecaddd0b43025bcae3cfdcf22c5`），同一版本的新测试版可以直接覆盖安装旧的；工作流会核对证书。没有配置测试签名的 fork 会退回每次临时生成的调试签名，这时新测试版要先卸载旧的才能安装。产物在该次运行的 Artifacts 里，核对 `SHA256SUMS.txt` 后发布为 GitHub 预发布版本。
 
+## 应用内更新
+
+应用检查更新时，正式版只看最新的正式 Release（`releases/latest`），测试版只看四位版本号的预发布（`v5.1.9.3` 这种标签，旧的 `v5.1.9-test.N` 不算），两边互不干扰。在 Android 上点“下载”，应用会下载对应的 APK（正式版找 `PicaComic-<版本>.apk`，测试版找 `PicaComic-<版本>-test.apk`），用同一个 Release 里的 SHA256SUMS 文件核对，再交给系统安装；其他平台打开发布页。所以发布时文件名和校验文件都要按上面的规则来。
+
 ## 正式版
 
 合并到 `master` 后，在 `master` 上分别运行 **Build Android Release APK**、**Build iOS Release IPA**、**Build macOS Release App**。

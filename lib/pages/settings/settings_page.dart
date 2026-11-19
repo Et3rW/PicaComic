@@ -41,6 +41,7 @@ import '../../network/nhentai_network/tag_stack.dart';
 import '../nhentai/tag_stack_page.dart';
 import 'translation_settings_page.dart';
 import '../../network/update.dart';
+import '../update_dialog.dart';
 import '../../network/webdav.dart';
 import '../../tools/background_service.dart';
 import '../../tools/debug.dart';
@@ -633,6 +634,12 @@ class _SettingsPageState extends State<SettingsPage> implements PopEntry{
         Text("仅用于学习交流".tl),
         const SizedBox(
           height: 16,
+        ),
+        ListTile(
+          leading: const Icon(Icons.update),
+          title: Text("检查更新".tl),
+          subtitle: Text("${"当前:".tl} $appVersionLabel"),
+          onTap: () => findUpdate(context),
         ),
         ListTile(
           leading: const Icon(Icons.code),
