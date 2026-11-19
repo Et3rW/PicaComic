@@ -7,7 +7,6 @@ import 'package:pica_comic/network/webdav.dart';
 import 'package:pica_comic/tools/app_links.dart';
 import 'package:pica_comic/tools/background_service.dart';
 import 'package:pica_comic/tools/translations.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'category_page.dart';
 import 'explore_page.dart';
 import 'favorites/main_favorites_page.dart';
@@ -112,20 +111,15 @@ class MainPageState extends State<MainPage> {
     });
   }
 
+  /// Checks for an update every time the app starts, unless the user turned
+  /// it off. It used to check at most once a day and counted a failed
+  /// request as a check, so a new version could go unnoticed for a day.
   void _checkUpdates() async {
-    var s = await SharedPreferences.getInstance();
-    var lastCheck = s.getInt("lastCheckUpdate");
-    if (lastCheck != null) {
-      if (DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(lastCheck)).inDays < 1) {
-        return;
-      }
-    }
     if (appdata.settings[2] != "1") {
       return;
     }
     var res = await checkUpdate();
-    s.setInt("lastCheckUpdate", DateTime.now().millisecondsSinceEpoch);
-    if (res != true) return;
+    if (res != true || !mounted) return;
     var info = await getUpdatesInfo();
     if (info == null) return;
     showUpdateDialog(App.globalContext!, info, onDisableCheck: () {
