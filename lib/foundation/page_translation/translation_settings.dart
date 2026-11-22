@@ -9,8 +9,9 @@ import 'translator.dart';
 /// Page translation settings, kept in their own file
 /// (`page_translation.json` in the app's data directory).
 ///
-/// They are deliberately not part of the synced app settings: the file holds
-/// API keys.
+/// They are not part of the app settings: the file holds API keys. A data
+/// export takes them along, a WebDAV sync only without the keys (see
+/// TranslationBackup).
 class TranslationSettings extends ChangeNotifier {
   TranslationSettings(this._file) {
     _load();
@@ -66,14 +67,52 @@ class TranslationSettings extends ChangeNotifier {
     }
   }
 
+  /// Everything as stored. Without [keys], the services' API keys are left
+  /// out, for copies kept on a server.
+  Map<String, dynamic> toJson({bool keys = true}) => {
+        'target': _targetCode,
+        'providers': [
+          for (var provider in _providers)
+            (keys ? provider : provider.copyWith(key: '')).toJson(),
+        ],
+        'active': _activeId,
+        'prompt': _prompt,
+      };
+
+  /// Takes on settings from a backup written by [toJson]. Its services
+  /// replace the ones with the same id and are added to the others; a
+  /// service saved without its key keeps the key it has here.
+  void importJson(Object? json) {
+    if (json is! Map) return;
+    if (json['target'] is String) {
+      _targetCode = TargetLanguage.of(json['target'] as String).code;
+    }
+    if (json['prompt'] is String) _prompt = json['prompt'] as String;
+    if (json['providers'] is List) {
+      for (var item in json['providers'] as List) {
+        var provider = TranslatorProvider.fromJson(item);
+        if (provider == null) continue;
+        var index = _providers.indexWhere((p) => p.id == provider!.id);
+        if (index < 0) {
+          _providers.add(provider);
+          continue;
+        }
+        if (provider.key.isEmpty) {
+          provider = provider.copyWith(key: _providers[index].key);
+        }
+        _providers[index] = provider;
+      }
+    }
+    var active = json['active'];
+    if (active is String && _providers.any((p) => p.id == active)) {
+      _activeId = active;
+    }
+    _save();
+  }
+
   void _save() {
     _file.parent.createSync(recursive: true);
-    _file.writeAsStringSync(jsonEncode({
-      'target': _targetCode,
-      'providers': [for (var provider in _providers) provider.toJson()],
-      'active': _activeId,
-      'prompt': _prompt,
-    }));
+    _file.writeAsStringSync(jsonEncode(toJson()));
     notifyListeners();
   }
 
