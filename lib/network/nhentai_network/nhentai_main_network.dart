@@ -510,6 +510,56 @@ class NhentaiNetwork {
     return res;
   }
 
+  /// Every gallery: no tag and no language picked. [excludes], the user's
+  /// default excluded tags as a query, can only be applied by a search.
+  Future<Res<List<NhentaiComicBrief>>> getAllComics(int page, NhentaiSort sort,
+      {String excludes = ''}) {
+    excludes = excludes.trim();
+    if (excludes.isNotEmpty) return _searchEverything(excludes, page, sort);
+    if (sort == NhentaiSort.recent) return _listPage('$baseUrl/', page);
+    // A search needs some text; a space matches every gallery.
+    return _searchEverything(' ', page, sort);
+  }
+
+  /// A search over every gallery is slow for the site, which then sometimes
+  /// answers "no results"; asking again a little later usually works.
+  Future<Res<List<NhentaiComicBrief>>> _searchEverything(
+      String query, int page, NhentaiSort sort) async {
+    var res = await _search(query, page, sort);
+    for (var retry = 1; retry <= 2; retry++) {
+      if (res.error || res.data.isNotEmpty) break;
+      await Future<void>.delayed(retryDelay * retry);
+      res = await _search(query, page, sort);
+    }
+    return res;
+  }
+
+  /// Wait before asking again, see [_searchEverything]. Tests shorten it.
+  static Duration retryDelay = const Duration(seconds: 2);
+
+  /// Galleries of the home page or a category route at [url], without the
+  /// popular ones shown above the first page's list.
+  Future<Res<List<NhentaiComicBrief>>> _listPage(String url, int page) async {
+    var uri = Uri.parse(url).replace(queryParameters: {'page': '$page'});
+    var res = await get(uri.toString());
+    if (res.error) {
+      return Res.fromErrorRes(res);
+    }
+    try {
+      var document = parse(res.data);
+      final tagIdsById = nhentaiTagIdsFromFetchedData(document);
+      var comicDoms = document
+          .querySelectorAll("div.gallery")
+          .where((e) => e.parent?.classes.contains('index-popular') != true)
+          .toList();
+      return Res([for (var dom in comicDoms) parseComic(dom, tagIdsById)],
+          subData: nhentaiLastPage(document, page));
+    } catch (e, s) {
+      LogManager.addLog(LogLevel.error, "Data Analyse", "$e\n$s");
+      return Res(null, errorMessage: "Failed to Parse Data: $e");
+    }
+  }
+
   Future<Res<List<NhentaiComicBrief>>> getCategoryComics(
       String path, int page, NhentaiSort sort) async {
     if (sort != NhentaiSort.recent) {

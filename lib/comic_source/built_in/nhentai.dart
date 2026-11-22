@@ -36,6 +36,8 @@ final nhentai = ComicSource.named(
     title: "nhentai",
     key: "nhentai",
     categories: [
+      // Every gallery: no tag, not even a language.
+      const FixedCategoryPart("默认", ["全部"], "category", ["/all/all"]),
       const FixedCategoryPart("language", ["中文", "日本語", "english"], "category",
           ["/language/chinese", "/language/japanese", "/language/english"]),
       RandomCategoryPartWithRuntimeData(
@@ -55,6 +57,12 @@ final nhentai = ComicSource.named(
     load: (category, param, options, page) async {
       var [_, type, name] = param!.split('/');
       var sort = NhentaiSort.fromValue(options[0]);
+      if (type == 'all') {
+        // Nothing picked, so not the search's language either; the tags the
+        // user always excludes still are.
+        return NhentaiNetwork().getAllComics(page, sort,
+            excludes: NhentaiTagSettings.applyDefaultExcludes(''));
+      }
       var lang = int.tryParse(appdata.settings[69]) ?? 0;
       if (type == 'combo') {
         // Several stacked tags, see nhentaiStackParam.
