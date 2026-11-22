@@ -5,6 +5,7 @@ import 'package:pica_comic/network/res.dart';
 import 'package:pica_comic/tools/translations.dart';
 import 'package:pica_comic/components/components.dart';
 import 'package:pica_comic/foundation/app.dart';
+import 'package:pica_comic/pages/favorites/random_favorite.dart';
 
 class NetworkFavoritePage extends StatelessWidget {
   const NetworkFavoritePage(this.data, {super.key});
@@ -373,6 +374,10 @@ class _FavoriteFolder extends ComicsPage<BaseComic> {
 
   @override
   String? get tag => "Favorites Folder $folderID";
+
+  @override
+  Widget? get tailing => RandomFavoriteButton(() => drawFromNetworkFavorites(
+      sourceKeyOfFavorites(data), (page) => data.loadComic(page, folderID)));
 
   @override
   String get sourceKey => data.key;

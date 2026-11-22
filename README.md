@@ -54,7 +54,7 @@ Pica Comic has 7 built-in sources:
 - Browse manga
 - Online reading
 - Download manga
-- Manage local favorites and network favorites
+- Manage local favorites and network favorites; the shuffle button opens a random item of the folder you are in, and "Another one" draws again
 - Data sync(using webdav)
 - Reading history
 - In-app updates: on Android the update is downloaded, checked and installed from the app; test builds follow test builds
@@ -94,7 +94,7 @@ Pica Comic 是一个用 Flutter 编写的多漫画源阅读器。本仓库 fork 
 
 - 浏览、搜索漫画，在线阅读
 - 下载漫画，离线阅读
-- 本地收藏和网络收藏
+- 本地收藏和网络收藏；收藏夹里的“随机”按钮从当前收藏夹随机打开一个（漫画或视频），详情页上的“换一个”可以接着抽
 - 阅读历史
 - 应用内检查更新；Android 上可以直接在应用里下载并安装，测试版只更新到测试版
 - 通过 WebDAV 同步数据
