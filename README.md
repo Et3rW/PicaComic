@@ -40,13 +40,14 @@ git clone https://github.com/Et3rW/PicaComic
 
 ### Built-in Comic Source
 
-Pica Comic has 6 built-in comic sources:
+Pica Comic has 7 built-in sources:
 - picacg
 - e-hentai/exhentai
 - jmcomic
 - hitomi
 - htcomic
 - nhentai
+- rule34video (videos, played in the app)
 
 ### Features
 
@@ -57,6 +58,7 @@ Pica Comic has 6 built-in comic sources:
 - Data sync(using webdav)
 - Reading history
 - In-app updates: on Android the update is downloaded, checked and installed from the app; test builds follow test builds
+- Videos from rule34video: played in the app (quality switch, seek previews, resume where you left off) and downloadable for offline viewing. See [doc/rule34video.md](doc/rule34video.md).
 - Page translation (Android): text on a page is recognized on the device and sent to a translation service of your choice (OpenAI-compatible APIs, Claude, Gemini or Google Translate), then drawn back over the page. Nothing is translated until you tap the translate button; then the whole comic is shown translated, with each chapter translated in the background from the page you are on. See [doc/page-translation.md](doc/page-translation.md).
 
 ### History
@@ -86,6 +88,7 @@ Pica Comic 是一个用 Flutter 编写的多漫画源阅读器。本仓库 fork 
 - hitomi
 - 绅士漫画（htcomic）
 - nhentai
+- rule34video（视频，在应用里播放）
 
 ### 功能
 
@@ -97,6 +100,7 @@ Pica Comic 是一个用 Flutter 编写的多漫画源阅读器。本仓库 fork 
 - 通过 WebDAV 同步数据
 - e-hentai、nhentai 点击标签时可以叠加多个标签一起搜索
 - nhentai 分类里的“全部”：不选任何标签和语言，按最新或热门浏览所有作品
+- **rule34video 视频**：在应用里播放，可以切换清晰度、拖动时预览画面、从上次的位置继续；可以下载后离线观看。详见 [doc/rule34video.md](doc/rule34video.md)。
 - **图片翻译（仅 Android）**：在本机识别页面上的文字，只把文字发给你选择的翻译服务，再把译文画回原处。支持 OpenAI 兼容接口（DeepSeek、通义千问、智谱 GLM、Kimi、豆包、硅基流动、OpenRouter、Ollama 等）、Claude、Gemini，以及不需要 key 的 Google 翻译。页面默认显示原图，点工具栏的翻译按钮后整本显示译文，从当前页开始在后台把每一章依次翻译完，退出漫画也会继续翻。翻译设置和译文可以随用户数据导出、导入。详见 [doc/page-translation.md](doc/page-translation.md)。
 
 ### 自己构建

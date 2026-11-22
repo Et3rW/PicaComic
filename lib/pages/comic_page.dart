@@ -673,6 +673,13 @@ abstract class BaseComicPage<T extends Object> extends StatelessWidget {
 
   void read(History? history);
 
+  /// Labels of the buttons that call [read]; a video says play instead.
+  String get readLabel => "阅读".tl;
+
+  String get continueLabel => "继续阅读".tl;
+
+  String get restartLabel => "从头开始".tl;
+
   void download();
 
   void openFavoritePanel();
@@ -1224,10 +1231,10 @@ abstract class BaseComicPage<T extends Object> extends StatelessWidget {
             children: [
               if (logic.history != null && width >= 500)
                 buildItem(
-                    "继续阅读".tl, Icons.menu_book, () => read(logic.history)),
+                    continueLabel, Icons.menu_book, () => read(logic.history)),
               if (width >= 500 || (width < 500 && logic.history != null))
                 buildItem(
-                    "从头开始".tl, Icons.not_started_outlined, () => read(null)),
+                    restartLabel, Icons.not_started_outlined, () => read(null)),
               buildItem("分享".tl, Icons.share, () {
                 var text = title!;
                 if (url != null) {
@@ -1326,7 +1333,7 @@ abstract class BaseComicPage<T extends Object> extends StatelessWidget {
                   Expanded(
                     child: FilledButton.tonal(
                       onPressed: () => read(_logic.history),
-                      child: Text("阅读".tl),
+                      child: Text(readLabel),
                     ),
                   ),
                 ],

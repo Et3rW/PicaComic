@@ -23,6 +23,8 @@ import '../../network/jm_network/jm_network.dart';
 import '../../network/nhentai_network/nhentai_main_network.dart';
 import '../../network/picacg_network/methods.dart';
 import '../../tools/io_tools.dart';
+import '../../network/rule34video/models.dart';
+import '../rule34video/r34_video_page.dart';
 
 extension LocalFavoritesExt on FavoriteItem {
   void addDownload() {
@@ -622,6 +624,11 @@ class LocalFavoriteTile extends ComicTile {
         download.read();
         return;
       }
+    }
+    // A video is played, not read.
+    if (comic.type.key == rule34videoKey.hashCode) {
+      playR34Video(comic.target);
+      return;
     }
     bool cancel = false;
     var controller = showLoadingDialog(

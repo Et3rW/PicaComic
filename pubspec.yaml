@@ -90,6 +90,7 @@ dependencies:
       ref: 7801fc582ecf5a7351632887891ecf309a7b2583
   flutter_inappwebview: ^6.0.0
   ffi: ^2.1.0
+  video_player: ^2.14.1
 
 dev_dependencies:
   flutter_test:
