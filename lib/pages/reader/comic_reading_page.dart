@@ -23,7 +23,9 @@ import 'package:pica_comic/foundation/local_favorites.dart';
 import 'package:pica_comic/foundation/page_translation/batch_translation.dart';
 import 'package:pica_comic/foundation/page_translation/page_translation_service.dart';
 import 'package:pica_comic/foundation/page_translation/translation_settings.dart';
+import 'package:pica_comic/foundation/page_translation/translation_tasks.dart';
 import 'package:pica_comic/pages/settings/translation_settings_page.dart';
+import 'package:pica_comic/pages/settings/translation_tasks_page.dart';
 import 'package:pica_comic/network/download.dart';
 import 'package:pica_comic/network/eh_network/eh_models.dart';
 import 'package:pica_comic/network/eh_network/get_gallery_id.dart';
@@ -222,14 +224,27 @@ class ComicReadingPage extends StatelessWidget {
       BaseImageProvider.clearCache();
       BaseImageProvider.setCacheSizeLimit(100 * 1024 * 1024);
       logic.openEpsView = openEpsDrawer;
-      logic.restartTranslation = () => translateChapter(logic);
+      logic.restartTranslation = () => translateChapter(logic, restart: true);
+      // A chapter of this comic still being translated in the background:
+      // the comic opens translated.
+      if (TranslationTasks.instance
+          .isTranslating(readingData.translationComicKey)) {
+        logic.translateAll = true;
+      }
       if (useDarkBackground) {
         Future.microtask(() =>
             StateController.findOrNull<WindowFrameController>()
                 ?.setDarkTheme());
       }
     }, dispose: (logic) {
-      logic.translationBatch?.cancel();
+      logic.closed = true;
+      // The chapter goes on being translated without the reader.
+      if (logic.translationTask case var task?) {
+        task.inReader = false;
+        if (task.isRunning) {
+          showToast(message: "本章会在后台继续翻译".tl);
+        }
+      }
       //清除缓存并减小最大缓存
       BaseImageProvider.clearCache();
       BaseImageProvider.setCacheSizeLimit(50 * 1024 * 1024);
@@ -577,8 +592,8 @@ class ComicReadingPage extends StatelessWidget {
   void toggleTranslation(ComicReadingPageLogic logic) {
     if (logic.translateAll) {
       logic.translateAll = false;
-      logic.translationBatch?.cancel();
-      logic.translationBatch = null;
+      TranslationTasks.instance.cancelComic(readingData.translationComicKey);
+      logic.translationTask = null;
       logic.update();
       showToast(message: "已关闭翻译".tl);
       return;
@@ -601,34 +616,47 @@ class ComicReadingPage extends StatelessWidget {
   }
 
   /// Starts translating every page of the current chapter in the background,
-  /// in place of a batch for another chapter.
-  void translateChapter(ComicReadingPageLogic logic) {
-    logic.translationBatch?.cancel();
-    logic.translationBatch = null;
-    if (!logic.translateAll || logic.urls.isEmpty) return;
+  /// or follows the task already translating it. Chapters read before go on.
+  /// With [restart], the chapter begins again (the settings changed).
+  void translateChapter(ComicReadingPageLogic logic, {bool restart = false}) {
+    logic.translationTask?.inReader = false;
+    logic.translationTask = null;
+    if (logic.closed || !logic.translateAll || logic.urls.isEmpty) return;
     var ep = logic.order;
     var urls = List.of(logic.urls);
+    var data = readingData;
     var service = PageTranslationService.instance;
-    var batch = BatchTranslation(
+    var task = TranslationTasks.instance.start(
+      comicKey: data.translationComicKey,
+      ep: ep,
+      title: data.title,
+      chapter: data.chapterName(ep),
       pages: BatchTranslation.orderFrom(urls.length, logic.index - 1),
       translatePage: (page) => service.translateInBackground(
-          readingData.loadImage(ep, page, urls[page]),
-          readingData.translationKey(ep, page)),
+          data.loadImage(ep, page, urls[page]), data.translationKey(ep, page)),
+      restart: restart,
+      onFinished: _tellTranslationResult,
     );
-    logic.translationBatch = batch;
-    batch.run().then((_) {
-      if (batch.isCancelled || logic.translationBatch != batch) return;
-      if (batch.stopReason != null) {
-        showToast(
-            message: "${"翻译连续失败, 已停止".tl}: ${batch.stopReason}");
-      } else if (batch.failed > 0) {
-        showToast(
-            message:
-                "${"本章翻译完成".tl}, ${"失败".tl}: ${batch.failed} ${"页".tl}");
-      } else {
-        showToast(message: "本章翻译完成".tl);
-      }
-    });
+    task.inReader = true;
+    logic.translationTask = task;
+  }
+
+  static void _tellTranslationResult(TranslationTask task) {
+    var batch = task.batch;
+    // Nobody is looking at the chapter: say which one it was.
+    var name = task.inReader
+        ? ""
+        : "${task.title}${task.chapter == null ? "" : " ${task.chapter}"}: ";
+    if (batch.stopReason != null) {
+      showToast(
+          message: "$name${"翻译连续失败, 已停止".tl}: ${batch.stopReason}");
+    } else if (batch.failed > 0) {
+      showToast(
+          message:
+              "$name${"本章翻译完成".tl}, ${"失败".tl}: ${batch.failed} ${"页".tl}");
+    } else {
+      showToast(message: "$name${"本章翻译完成".tl}");
+    }
   }
 
   /// Long press on the translate button: act on the current page.
@@ -678,6 +706,13 @@ class ComicReadingPage extends StatelessWidget {
               },
               child: Text("重新翻译这一页".tl),
             ),
+          SimpleDialogOption(
+            onPressed: () {
+              Navigator.of(context).pop();
+              App.globalTo(() => const TranslationTasksPage());
+            },
+            child: Text("翻译任务".tl),
+          ),
           SimpleDialogOption(
             onPressed: () {
               Navigator.of(context).pop();

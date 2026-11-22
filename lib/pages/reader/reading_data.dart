@@ -78,8 +78,14 @@ abstract class ReadingData {
     }
   }
 
+  /// Identifies this comic among page translations and their tasks.
+  String get translationComicKey => "$sourceKey@$downloadId";
+
   /// Key of page [page] of chapter [ep] for page translation.
-  String translationKey(int ep, int page) => "$sourceKey@$downloadId@$ep@$page";
+  String translationKey(int ep, int page) => "$translationComicKey@$ep@$page";
+
+  /// Name of chapter [ep] (from 1), if the comic has chapters.
+  String? chapterName(int ep) => hasEp ? eps?.values.elementAtOrNull(ep - 1) : null;
 
   String buildImageKey(int ep, int page, String url) => url;
 
