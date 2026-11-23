@@ -436,9 +436,9 @@ class _ComicDescription extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (tags != null) {
-      tags!.removeWhere((element) => element.removeAllBlank == "");
-    }
+    // The list may belong to the comic and may not be changeable (a const
+    // list), so the blank tags are left out of a copy.
+    var tags = this.tags?.where((t) => t.removeAllBlank != "").toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
@@ -470,7 +470,7 @@ class _ComicDescription extends StatelessWidget {
                   clipBehavior: Clip.antiAlias,
                   crossAxisAlignment: WrapCrossAlignment.end,
                   children: [
-                    for (var s in tags!)
+                    for (var s in tags)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(0, 0, 4, 3),
                         child: Container(

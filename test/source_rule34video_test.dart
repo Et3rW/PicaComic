@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pica_comic/base.dart';
 import 'package:pica_comic/comic_source/built_in/rule34video.dart';
@@ -312,4 +313,42 @@ void main() {
     expect(again.title, video.title);
     expect(again.cover, video.poster);
   });
+
+  for (final detailed in [true, false]) {
+    // A list of videos is drawn with these tiles. A video has no tags, and
+    // its list of them is a const one, which the tile must not change.
+    testWidgets(
+        'a video tile is drawn in ${detailed ? 'detailed' : 'brief'} mode',
+        (tester) async {
+      // 44: the tile layout; 72, 73: marks for favorites and history, which
+      // need the databases.
+      final previous = [for (var i in [44, 72, 73]) appdata.settings[i]];
+      addTearDown(() {
+        for (var (n, i) in [44, 72, 73].indexed) {
+          appdata.settings[i] = previous[n];
+        }
+      });
+      appdata.settings[44] = detailed ? '0,1.0' : '1,1.0';
+      appdata.settings[72] = '0';
+      appdata.settings[73] = '0';
+      final videos = R34Parser.videoList(listPage([
+        card(4221840, 'ellie-in-the-rain', 'Ellie in the rain'),
+      ])).$1;
+      await tester.pumpWidget(MaterialApp(
+          home: Scaffold(
+              body: Center(
+        child: SizedBox(
+            width: 400, height: 220, child: _TestVideoTile(videos.single)),
+      ))));
+      expect(tester.takeException(), isNull);
+      expect(find.text('Ellie in the rain'), findsWidgets);
+    });
+  }
+}
+
+class _TestVideoTile extends R34VideoTile {
+  const _TestVideoTile(super.comic);
+
+  @override
+  Widget get image => const ColoredBox(color: Colors.grey);
 }
