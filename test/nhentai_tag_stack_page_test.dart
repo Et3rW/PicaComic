@@ -33,12 +33,12 @@ void main() {
     NhentaiTagSettings.saver = () async {};
     network.dio = Dio()
       ..interceptors.add(InterceptorsWrapper(onRequest: (options, handler) {
-        requests.add(options.uri);
+        if (options.uri.path != '/api/v2/cdn') requests.add(options.uri);
         // No galleries: keeps the test away from image loading.
         handler.resolve(Response<String>(
           requestOptions: options,
           statusCode: 200,
-          data: '<html></html>',
+          data: '{"result": [], "num_pages": 0}',
         ));
       }));
   });
@@ -69,13 +69,13 @@ void main() {
         const NhentaiTagStackPage(terms: [chinese, glasses]));
     expect(find.widgetWithText(InputChip, 'chinese'), findsOneWidget);
     expect(find.widgetWithText(InputChip, 'glasses'), findsOneWidget);
-    expect(requests.last.queryParameters['q'], 'language:chinese tag:"glasses"');
+    expect(requests.last.queryParameters['query'], 'language:chinese tag:"glasses"');
 
     await tester.tap(deleteButtonOf('chinese'));
     await tester.pumpAndSettle();
     expect(find.widgetWithText(InputChip, 'chinese'), findsNothing);
-    // One tag left: back to the classic category route, no delete button.
-    expect(requests.last.path, '/tag/glasses/');
+    // One tag left: back to the classic category, no delete button.
+    expect(requests.last.queryParameters['query'], 'tag:"glasses"');
     expect(deleteButtonOf('glasses'), findsNothing);
   });
 
@@ -85,7 +85,7 @@ void main() {
     await tester.tap(find.text('热门 | 一周'));
     await tester.pumpAndSettle();
     expect(requests.last.queryParameters,
-        {'q': 'language:chinese tag:"glasses"', 'page': '1', 'sort': 'popular-week'});
+        {'query': 'language:chinese tag:"glasses"', 'page': '1', 'sort': 'popular-week'});
   });
 
   testWidgets('records the top tag page as context for opened comics',
@@ -136,7 +136,7 @@ void main() {
         const CategoryComicsPage(
             category: '中文', param: '/language/chinese', categoryKey: 'nhentai'));
     expect(find.byType(NhentaiTagStackPage), findsOneWidget);
-    expect(requests.last.path, '/language/chinese/');
+    expect(requests.last.queryParameters['query'], 'language:"chinese"');
   });
 
   testWidgets('stacking opens a page or explains why not', (tester) async {
@@ -165,7 +165,7 @@ void main() {
     await tester.tap(find.text('add'));
     await tester.pumpAndSettle();
     expect(find.byType(NhentaiTagStackPage), findsOneWidget);
-    expect(requests.last.queryParameters['q'], 'language:chinese tag:"glasses"');
+    expect(requests.last.queryParameters['query'], 'language:chinese tag:"glasses"');
     await tester.pump(const Duration(seconds: 3));
   });
 
