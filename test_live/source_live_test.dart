@@ -214,9 +214,26 @@ void main() {
     expect(comic.title, isNotEmpty);
     expect(comic.thumbnails, isNotEmpty);
 
+    expect(comic.tags['Pages'], isNotEmpty);
+    await expectLoads(ImageManager().getImage(comic.cover));
+    await expectLoads(ImageManager().getImage(comic.thumbnails.first));
+
     final images = need(await network.getImages(first.id), 'image list');
-    expect(images, isNotEmpty);
+    expect(images, hasLength(int.parse(comic.tags['Pages']!.single)));
     await expectLoads(ImageManager().getImage(images.first));
+
+    // Search with a sort and an exclusion, as the tag pages build it.
+    final found = need(
+        await network.searchQuery(
+            'language:chinese -tag:"yaoi"', 2, NhentaiSort.popularWeek),
+        'search');
+    expect(found, isNotEmpty);
+    final category = need(
+        await network.getCategoryComics(
+            '/tag/full-color', 1, NhentaiSort.recent),
+        'category');
+    expect(category.first.tags, contains('full color'));
+    need(await network.getComments(first.id), 'comments');
   });
 
   // Every picacg endpoint needs an account. Without one the only thing that
