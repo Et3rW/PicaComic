@@ -151,7 +151,7 @@ class R34VideoPage extends BaseComicPage<R34Video> {
   String get downloadedId => r34DownloadId(id.split('/').first);
 
   @override
-  Map<String, String> get headers => const {'User-Agent': webUA};
+  Map<String, String> get headers => {'User-Agent': webUA};
 
   @override
   String get readLabel => '播放'.tl;

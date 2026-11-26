@@ -1036,9 +1036,6 @@ abstract class BaseComicPage<T extends Object> extends StatelessWidget {
       );
     }
 
-    if (headers["host"] == null && headers["Host"] == null) {
-      headers["host"] = Uri.parse(cover!).host;
-    }
     ImageProvider image = StreamImageProvider(
         () => ImageManager().getCustomThumbnail(cover!, sourceKey), cover!);
     return GestureDetector(

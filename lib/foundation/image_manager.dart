@@ -182,7 +182,8 @@ class ImageManager {
   /// 获取图片, 适用于没有任何限制的图片链接
   Stream<DownloadProgress> getImage(final String url,
       [Map<String, String>? headers]) {
-    headers = headers ?? {};
+    // A copy: the caller's map may be a const one.
+    headers = {...?headers};
     headers["User-Agent"] ??= webUA;
     headers["Connection"] = "Keep-Alive";
     var realUrl = url;

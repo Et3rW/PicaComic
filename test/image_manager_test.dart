@@ -84,6 +84,20 @@ void main() {
       expect(CacheManager().getType(url), 'jpg');
     });
 
+    test('the headers may be a const map', () async {
+      // rule34video passes one; the manager adds its own headers to a copy.
+      final url = 'https://img.example/${unique('c')}.jpg';
+      http.on(url, (request) {
+        expect(request.headers['X-Test'], '1');
+        expect(request.headers['User-Agent'], webUA);
+        return FakeResponse(jpeg(100), headers: jpegHeaders);
+      });
+      const headers = {'X-Test': '1'};
+      final last = await manager.getImage(url, headers).last;
+      expect(last.finished, isTrue);
+      expect(headers, {'X-Test': '1'});
+    });
+
     test('a cached image is not downloaded again', () async {
       final url = 'https://img.example/${unique('b')}.png';
       http.on(url, (_) =>

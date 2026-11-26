@@ -1,11 +1,19 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pica_comic/base.dart';
 import 'package:pica_comic/comic_source/built_in/rule34video.dart';
+import 'package:pica_comic/foundation/app.dart';
+import 'package:pica_comic/foundation/history.dart';
+import 'package:pica_comic/foundation/local_favorites.dart';
+import 'package:pica_comic/network/download.dart';
 import 'package:pica_comic/network/rule34video/download.dart';
 import 'package:pica_comic/network/rule34video/models.dart';
 import 'package:pica_comic/network/rule34video/parser.dart';
 import 'package:pica_comic/network/rule34video/rule34video_network.dart';
+import 'package:pica_comic/pages/rule34video/r34_video_page.dart';
+import 'package:pica_comic/tools/translations.dart';
 
 import 'support/fake_http.dart';
 
@@ -312,6 +320,47 @@ void main() {
     expect(again.quality, '1080p');
     expect(again.title, video.title);
     expect(again.cover, video.poster);
+  });
+
+  // The detail page once failed to build: it wrote into the const map of
+  // headers the video page gives, so there was no play or download button.
+  testWidgets('the video page shows its play and download buttons',
+      (tester) async {
+    final previous = [for (var i in [22, 72, 73]) appdata.settings[i]];
+    addTearDown(() {
+      for (var (n, i) in [22, 72, 73].indexed) {
+        appdata.settings[i] = previous[n];
+      }
+    });
+    // A phone: the play and download buttons are under the cover.
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    AppTranslation.translations = {};
+    appdata.settings[72] = '0';
+    appdata.settings[73] = '0';
+    http.text('rule34video.com/video/4742602/the-witch/', videoPage);
+    await tester.runAsync(() async {
+      // The page looks the video up in history, local favorites and
+      // downloads.
+      final data = Directory.systemTemp.createTempSync('pica_r34_page');
+      addTearDown(() => data.deleteSync(recursive: true));
+      App.dataPath = data.path;
+      appdata.settings[22] = '${data.path}/download';
+      await HistoryManager().init();
+      await LocalFavoritesManager().init();
+      await DownloadManager().init();
+      await tester.pumpWidget(const MaterialApp(
+          home: R34VideoPage('4742602/the-witch',
+              cover: 'https://rule34video.com/cover.jpg')));
+      for (var i = 0; i < 20 && find.text('播放').evaluate().isEmpty; i++) {
+        await Future.delayed(const Duration(milliseconds: 50));
+        await tester.pump();
+      }
+    });
+    expect(tester.takeException(), isNull);
+    expect(find.text('播放'), findsOneWidget);
+    expect(find.text('下载'), findsOneWidget);
   });
 
   for (final detailed in [true, false]) {
