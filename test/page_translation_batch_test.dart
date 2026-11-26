@@ -89,4 +89,48 @@ void main() {
     expect(batch.isCancelled, isTrue);
     expect(batch.isRunning, isFalse);
   });
+
+  test('pages that failed or were never tried are recorded', () async {
+    var batch = BatchTranslation(
+      pages: List.generate(8, (i) => i),
+      parallel: 1,
+      translatePage: (page) async => page == 1 || page >= 4 ? 'quota' : null,
+    );
+    await batch.run();
+    expect(batch.succeededPages, {0, 2, 3});
+    expect(batch.failedPages, {1, 4, 5, 6});
+    expect(batch.untriedPages, [7]);
+    expect(batch.succeeded, 3);
+    expect(batch.failed, 4);
+    expect(batch.finished, 7);
+    expect(batch.stopReason, 'quota');
+    expect(batch.hasFailures, isTrue);
+  });
+
+  test('running again translates only the pages not translated', () async {
+    var tried = <int>[];
+    var broken = true;
+    var batch = BatchTranslation(
+      pages: BatchTranslation.orderFrom(6, 2),
+      parallel: 1,
+      translatePage: (page) async {
+        tried.add(page);
+        return broken && page >= 3 ? 'wrong key' : null;
+      },
+    );
+    await batch.run();
+    expect(tried, [2, 3, 4, 5]);
+    expect(batch.untriedPages, [0, 1]);
+    tried.clear();
+    broken = false;
+    await batch.run();
+    // Page 2 was translated already; the failed and untried ones follow
+    // the same order as before.
+    expect(tried, [3, 4, 5, 0, 1]);
+    expect(batch.succeeded, 6);
+    expect(batch.failed, 0);
+    expect(batch.stopReason, isNull);
+    expect(batch.hasFailures, isFalse);
+    expect(batch.untriedPages, isEmpty);
+  });
 }
