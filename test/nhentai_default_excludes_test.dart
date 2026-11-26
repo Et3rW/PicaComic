@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pica_comic/base.dart';
@@ -7,6 +9,7 @@ import 'package:pica_comic/network/nhentai_network/nhentai_main_network.dart';
 import 'package:pica_comic/network/nhentai_network/tag_settings.dart';
 import 'package:pica_comic/network/nhentai_network/tag_query.dart';
 import 'package:pica_comic/network/nhentai_network/tag_stack.dart';
+import 'package:pica_comic/tools/translations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -17,6 +20,8 @@ void main() {
   late List<String> history;
   late String language;
   late Map<String, dynamic> data;
+
+  setUpAll(() => AppTranslation.translations = {});
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});
@@ -31,13 +36,27 @@ void main() {
     NhentaiTagSettings.saver = () async {};
     network.dio = Dio()
       ..interceptors.add(InterceptorsWrapper(onRequest: (options, handler) {
+        if (options.uri.path == '/api/v2/cdn') {
+          handler.resolve(Response<String>(
+              requestOptions: options, statusCode: 200, data: '{}'));
+          return;
+        }
         requests.add(options.uri);
         handler.resolve(Response<String>(
           requestOptions: options,
           statusCode: 200,
-          data: '<div class="gallery" data-tags="20905">'
-              '<a href="/g/101/"><img src="https://example.com/a.jpg"></a>'
-              '<div class="caption">Title</div></div>',
+          data: jsonEncode({
+            'result': [
+              {
+                'id': 101,
+                'media_id': '1',
+                'english_title': 'Title',
+                'thumbnail': 'galleries/1/thumb.webp',
+                'tag_ids': [20905],
+              },
+            ],
+            'num_pages': 1,
+          }),
         ));
       }));
   });
@@ -62,9 +81,9 @@ void main() {
     final result = await nhentai.searchPageData!
         .loadPage!('tag:"glasses" tag:"yaoi"', 1, ['']);
     expect(result.error, isFalse);
-    expect(requests.single.path, '/search/');
+    expect(requests.single.path, '/api/v2/search');
     // yaoi is included explicitly, so only guro is added.
-    expect(requests.single.queryParameters['q'],
+    expect(requests.single.queryParameters['query'],
         'tag:"glasses" tag:"yaoi" -tag:"guro"');
     expect(appdata.searchHistory.last, 'tag:"glasses" tag:"yaoi"');
   });
@@ -72,16 +91,17 @@ void main() {
   test('search without defaults is unchanged', () async {
     await nhentai.searchPageData!.loadPage!('touhou', 2, ['&sort=popular']);
     expect(requests.single.queryParameters,
-        {'q': 'touhou', 'page': '2', 'sort': 'popular'});
+        {'query': 'touhou', 'page': '2', 'sort': 'popular'});
   });
 
   test('recent category uses search when defaults exist', () async {
     await setDefaults();
     await nhentai.categoryComicsData!
         .load('full-color', '/tag/full-color', [''], 3);
-    expect(requests.single.path, '/search/');
+    expect(requests.single.path, '/api/v2/search');
     expect(requests.single.queryParameters, {
-      'q': 'tag:"full color" -tag:"yaoi" -tag:"guro"',
+      'query': 'tag:"full color" -tag:"yaoi" -tag:"guro"',
+      'sort': 'date',
       'page': '3',
     });
   });
@@ -94,9 +114,9 @@ void main() {
     ]);
     await nhentai.categoryComicsData!
         .load('combo', param, ['&sort=popular'], 2);
-    expect(requests.single.path, '/search/');
+    expect(requests.single.path, '/api/v2/search');
     expect(requests.single.queryParameters, {
-      'q': 'language:chinese tag:"glasses" -tag:"yaoi" -tag:"guro"',
+      'query': 'language:chinese tag:"glasses" -tag:"yaoi" -tag:"guro"',
       'page': '2',
       'sort': 'popular',
     });
@@ -113,7 +133,7 @@ void main() {
         ]),
         [''],
         1);
-    expect(requests.last.queryParameters['q'],
+    expect(requests.last.queryParameters['query'],
         'tag:"a" tag:"b" language:japanese');
     await nhentai.categoryComicsData!.load(
         'combo',
@@ -123,19 +143,21 @@ void main() {
         ]),
         [''],
         1);
-    expect(requests.last.queryParameters['q'], 'language:english tag:"b"');
+    expect(requests.last.queryParameters['query'], 'language:english tag:"b"');
   });
 
-  test('non-namespace category keeps its route even with defaults', () async {
-    await setDefaults();
-    await nhentai.categoryComicsData!.load('x', '/search/x', [''], 1);
-    expect(requests.single.path, '/search/x/');
+  test('a search category searches its words', () async {
+    await nhentai.categoryComicsData!.load('x', '/search/two%20words', [''], 1);
+    expect(requests.single.path, '/api/v2/search');
+    expect(requests.single.queryParameters['query'], 'two words');
   });
 
-  test('recent category keeps its route without defaults', () async {
+  test('recent category searches its namespace without defaults', () async {
     await nhentai.categoryComicsData!
         .load('full-color', '/tag/full-color', [''], 3);
-    expect(requests.single.path, '/tag/full-color/');
+    expect(requests.single.path, '/api/v2/search');
+    expect(requests.single.queryParameters,
+        {'query': 'tag:"full color"', 'sort': 'date', 'page': '3'});
   });
 
   test('global language filter keeps history and adds defaults', () async {
@@ -144,7 +166,7 @@ void main() {
     await nhentai.categoryComicsData!
         .load('glasses', '/tag/glasses', ['&sort=popular-week'], 1);
     expect(requests.single.queryParameters, {
-      'q': 'tag:glasses language:chinese -tag:"yaoi" -tag:"guro"',
+      'query': 'tag:glasses language:chinese -tag:"yaoi" -tag:"guro"',
       'page': '1',
       'sort': 'popular-week',
     });
@@ -169,8 +191,8 @@ void main() {
         ));
       }));
     final res = await network.autocompleteTags('to');
-    expect(requests.single.path, '/api/v2/tags/autocomplete');
-    expect(bodies.single, {'query': 'to', 'limit': 20});
+    expect(requests.single.path, '/api/v2/tags/search');
+    expect(bodies.single, {'type': null, 'query': 'to', 'limit': 20});
     expect(res.data.map((e) => '${e.type}:${e.name}'),
         ['parody:touhou project', 'artist:to']);
   });
@@ -187,5 +209,6 @@ void main() {
       }));
     final res = await network.autocompleteTags('to');
     expect(res.error, isTrue);
+    expect(res.errorMessage, '请求太频繁, 请稍后再试');
   });
 }

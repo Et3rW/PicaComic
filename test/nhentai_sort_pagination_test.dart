@@ -1,6 +1,7 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:html/parser.dart';
 import 'package:pica_comic/base.dart';
 import 'package:pica_comic/comic_source/built_in/nhentai.dart';
 import 'package:pica_comic/network/cookie_jar.dart';
@@ -27,28 +28,37 @@ void main() {
     network.dio = Dio()
       ..interceptors.add(InterceptorsWrapper(onRequest: (options, handler) {
         final uri = options.uri;
-        requests.add(uri);
-        if (uri.path.contains('/popular') &&
-            !uri.path.startsWith('/language/')) {
-          handler.reject(DioException(
+        if (uri.path == '/api/v2/cdn') {
+          handler.resolve(Response<String>(
             requestOptions: options,
-            type: DioExceptionType.badResponse,
-            response: Response(requestOptions: options, statusCode: 404),
+            statusCode: 200,
+            data: jsonEncode({
+              'image_servers': ['https://i9.example'],
+              'thumb_servers': ['https://t9.example'],
+            }),
           ));
           return;
         }
-        // Reproduce the reported legacy Chinese route returning page one.
-        final page = uri.path.startsWith('/language/chinese/popular')
-            ? 1
-            : int.parse(uri.queryParameters['page'] ?? '1');
+        requests.add(uri);
+        final page = int.parse(uri.queryParameters['page'] ?? '1');
         handler.resolve(Response<String>(
           requestOptions: options,
           statusCode: 200,
-          data: '<div class="gallery" data-tags="20905">'
-              '<a href="/g/${100 + page}/"><img src="https://example.com/a.jpg"></a>'
-              '<div class="caption">Page $page</div></div>'
-              '<section class="pagination"><a class="last" '
-              'href="/search/?q=artist%3A123&amp;page=12&amp;sort=popular">Last</a></section>',
+          data: jsonEncode({
+            'result': [
+              {
+                'id': 100 + page,
+                'media_id': '9$page',
+                'english_title': 'Page $page',
+                'thumbnail': 'galleries/9$page/thumb.webp',
+                'tag_ids': [20905],
+                'blacklisted': false,
+              },
+            ],
+            'num_pages': 12,
+            'per_page': 25,
+            'total': 300,
+          }),
         ));
       }));
   });
@@ -84,9 +94,9 @@ void main() {
         final result = await nhentai.categoryComicsData!
             .load('full-color', '/$type/full-color', [entry.key.value], 2);
         expect(result.error, isFalse);
-        expect(requests.last.path, '/search/');
+        expect(requests.last.path, '/api/v2/search');
         expect(requests.last.queryParameters, {
-          'q': '$type:"full color"',
+          'query': '$type:"full color"',
           'page': '2',
           'sort': entry.value,
         });
@@ -104,9 +114,9 @@ void main() {
           final result = await nhentai.categoryComicsData!
               .load(lang, '/language/$lang', [entry.key.value], page);
           expect(result.error, isFalse);
-          expect(requests.last.path, '/search/');
+          expect(requests.last.path, '/api/v2/search');
           expect(requests.last.queryParameters, {
-            'q': 'language:"$lang"',
+            'query': 'language:"$lang"',
             'page': '$page',
             'sort': entry.value,
           });
@@ -119,22 +129,41 @@ void main() {
     });
   }
 
-  test('recent categories keep their working route and requested page',
+  test('recent categories search their namespace by date on the page asked',
       () async {
-    for (final path in [
-      '/tag/full-color',
-      '/language/chinese',
-      '/language/japanese',
-      '/language/english'
+    for (final (path, query) in [
+      ('/tag/full-color', 'tag:"full color"'),
+      ('/language/chinese', 'language:"chinese"'),
+      ('/language/japanese', 'language:"japanese"'),
+      ('/language/english', 'language:"english"'),
     ]) {
       final result =
           await network.getCategoryComics(path, 3, NhentaiSort.recent);
       expect(result.error, isFalse);
-      expect(requests.last.path, '$path/');
-      expect(requests.last.queryParameters, {'page': '3'});
+      expect(requests.last.path, '/api/v2/search');
+      expect(requests.last.queryParameters,
+          {'query': query, 'sort': 'date', 'page': '3'});
       expect(result.data.single.id, '103');
       expect(result.subData, 12);
     }
+  });
+
+  test('a list comic gets its cover from the thumbnail server', () async {
+    final result = await network.search('x', 1);
+    expect(result.data.single.cover, 'https://t9.example/galleries/91/thumb.webp');
+    expect(result.data.single.title, 'Page 1');
+    expect(result.data.single.tags, ['full color']);
+  });
+
+  test('an empty search lists the newest, or everything with a space',
+      () async {
+    await network.searchQuery('', 2, NhentaiSort.recent);
+    expect(requests.last.path, '/api/v2/galleries');
+    expect(requests.last.queryParameters, {'page': '2'});
+    await network.searchQuery('  ', 2, NhentaiSort.popularWeek);
+    expect(requests.last.path, '/api/v2/search');
+    expect(requests.last.queryParameters,
+        {'query': ' ', 'sort': 'popular-week', 'page': '2'});
   });
 
   test('global language filter also preserves search sort and page', () async {
@@ -144,7 +173,7 @@ void main() {
           .load('glasses', '/tag/glasses', [entry.key.value], 3);
       expect(result.error, isFalse);
       expect(requests.last.queryParameters, {
-        'q': 'tag:glasses language:chinese',
+        'query': 'tag:glasses language:chinese',
         'page': '3',
         'sort': entry.value,
       });
@@ -167,19 +196,4 @@ void main() {
     expect(nhentaiCategoryQuery('/group/%E7%A4%BA%E4%BE%8B'), 'group:"示例"');
   });
 
-  test('pagination accepts nested relative or absolute links and no last link',
-      () {
-    final doc = parse('<section class="pagination"><span>'
-        '<a href="https://nhentai.net/search/?q=123&amp;page=9">Last</a></span>'
-        '<a href="?q=456&amp;page=bad">Invalid</a>'
-        '<a href="?q=789&amp;page=-3">Invalid</a></section>');
-    expect(nhentaiLastPage(doc, 2), 9);
-    expect(
-        nhentaiLastPage(
-            parse('<section class="pagination">'
-                '<a href="?page=4">Next</a></section>'),
-            3),
-        4);
-    expect(nhentaiLastPage(parse('<main></main>'), 3), 3);
-  });
 }
