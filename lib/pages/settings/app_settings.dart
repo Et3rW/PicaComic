@@ -523,7 +523,9 @@ void exportDataSetting(BuildContext context) {
       context: context,
       builder: (context) => AlertDialog(
             title: Text("导出用户数据".tl),
-            content: Text("将导出设置, 账号, 历史记录, 下载内容, 本地收藏等数据".tl),
+            content: Text(
+                "将导出设置, 账号, 历史记录, 下载内容, 本地收藏, 图片翻译设置和已翻译的页面等数据。图片翻译服务的 API Key 也在文件里, 请妥善保管导出的文件。"
+                    .tl),
             actions: [
               TextButton(
                   onPressed: () => App.globalBack(), child: Text("取消".tl)),

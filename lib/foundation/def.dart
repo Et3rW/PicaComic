@@ -63,5 +63,6 @@ const builtInSources = [
   "jm",
   "hitomi",
   "htmanga",
-  "nhentai"
+  "nhentai",
+  "rule34video",
 ];

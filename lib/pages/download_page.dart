@@ -36,10 +36,28 @@ import 'package:pica_comic/tools/translations.dart';
 import 'package:pica_comic/components/components.dart';
 
 import 'htmanga/ht_comic_page.dart';
+import 'rule34video/r34_video_page.dart';
+import 'rule34video/video_player_page.dart';
+import 'package:pica_comic/network/rule34video/download.dart';
 
 extension ReadComic on DownloadedItem {
   void read({int? ep}) async {
     final comic = this;
+    if (comic is R34DownloadedVideo) {
+      var history = await History.createIfNull(
+          await HistoryManager().find(comic.video.id), comic.video);
+      App.globalTo(() => VideoPlayerPage(
+            title: comic.name,
+            videos: [
+              PlayableVideo.file(
+                  comic.quality, comic.filePath(DownloadManager().path!)),
+            ],
+            startAt: Duration(seconds: history.page),
+            onProgress: (position, duration) =>
+                saveR34Progress(history, position, duration),
+          ));
+      return;
+    }
     if (comic.type == DownloadType.picacg) {
       var history =
           await History.findOrCreate((comic as DownloadedComic).comicItem);
@@ -344,6 +362,10 @@ class DownloadPage extends StatelessWidget {
     }
     if (comic == null) {
       showToast(message: "请选择一个漫画".tl);
+      return;
+    }
+    if (comic is R34DownloadedVideo) {
+      showToast(message: "视频不能导出为 PDF".tl);
       return;
     }
     var file = File("${App.dataPath}/font.ttf");
@@ -907,6 +929,11 @@ class DownloadPage extends StatelessWidget {
                                         }(),
                                       DownloadType.favorite =>
                                         throw UnimplementedError(),
+                                      DownloadType.rule34video =>
+                                        FavoriteItem.custom(
+                                            (comic as R34DownloadedVideo)
+                                                .video
+                                                .toBrief()),
                                     });
                               }
                             }
@@ -1040,7 +1067,10 @@ class _DownloadedComicInfoViewState extends State<DownloadedComicInfoView> {
                   ),
                   Expanded(
                     child: FilledButton(
-                        onPressed: () => read(), child: Text("阅读".tl)),
+                        onPressed: () => read(),
+                        child: Text(widget.item is R34DownloadedVideo
+                            ? "播放".tl
+                            : "阅读".tl)),
                   ),
                 ],
               )),
@@ -1142,5 +1172,7 @@ void _toComicInfoPage(DownloadedItem comic) {
     context.to(() => NhentaiComicPage(comic.id.replaceFirst("nhentai", "")));
   } else if (comic is CustomDownloadedItem) {
     context.to(() => ComicPage(sourceKey: comic.sourceKey, id: comic.comicId));
+  } else if (comic is R34DownloadedVideo) {
+    context.to(() => R34VideoPage(comic.video.id, cover: comic.video.poster));
   }
 }

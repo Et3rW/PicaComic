@@ -73,5 +73,31 @@ class TranslationStore {
 
   void clear() => _db.execute('DELETE FROM pages');
 
+  /// Writes a copy of every stored page to a new database at [path], for a
+  /// backup. The copy is consistent even while pages are being added.
+  void exportTo(String path) => _db.execute('VACUUM INTO ?', [path]);
+
+  /// Adds the pages of the database at [path], written by [exportTo]. A page
+  /// stored here too keeps whichever translation is newer. Returns how many
+  /// pages were added or replaced.
+  int importFrom(String path) {
+    _db.execute("ATTACH DATABASE ? AS backup", [path]);
+    try {
+      _db.execute('''
+        INSERT INTO pages (key, width, height, blocks, time)
+        SELECT key, width, height, blocks, time FROM backup.pages WHERE true
+        ON CONFLICT(key) DO UPDATE SET
+          width = excluded.width,
+          height = excluded.height,
+          blocks = excluded.blocks,
+          time = excluded.time
+        WHERE excluded.time > pages.time
+      ''');
+      return _db.getUpdatedRows();
+    } finally {
+      _db.execute('DETACH DATABASE backup');
+    }
+  }
+
   void close() => _db.dispose();
 }

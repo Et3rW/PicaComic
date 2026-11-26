@@ -3,7 +3,6 @@ import 'package:pica_comic/base.dart';
 import 'package:pica_comic/foundation/app.dart';
 import 'package:pica_comic/foundation/image_loader/cached_image.dart';
 import 'package:pica_comic/network/download.dart';
-import 'package:pica_comic/network/eh_network/eh_download_model.dart';
 import 'package:pica_comic/tools/translations.dart';
 import 'package:pica_comic/network/download_model.dart';
 import 'package:pica_comic/components/components.dart';
@@ -321,8 +320,7 @@ class _DownloadingTileState extends State<_DownloadingTile> {
 
     String status = "${"已下载".tl}$downloadPages/$pagesCount";
 
-    if (comic is EhDownloadingItem
-        && (comic as EhDownloadingItem).downloadType != 0) {
+    if (comic.countsBytes) {
       status = "${_bytesToSize(downloadPages).split(' ').first}"
           "/${_bytesToSize(pagesCount!)}";
     }

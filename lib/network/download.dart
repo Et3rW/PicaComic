@@ -23,6 +23,8 @@ import 'package:pica_comic/network/jm_network/jm_download.dart';
 import 'package:pica_comic/network/jm_network/jm_models.dart';
 import 'package:pica_comic/network/nhentai_network/download.dart';
 import 'package:pica_comic/network/picacg_network/picacg_download_model.dart';
+import 'package:pica_comic/network/rule34video/download.dart';
+import 'package:pica_comic/network/rule34video/models.dart';
 import 'package:pica_comic/pages/download_page.dart';
 import 'package:pica_comic/tools/extensions.dart';
 import 'package:pica_comic/tools/io_extensions.dart';
@@ -449,6 +451,9 @@ DownloadingItem downloadingItemFromMap(
     case 7:
       return FavoriteDownloading.fromMap(
           map, whenFinish, whenError, updateInfo, map["id"]);
+    case 8:
+      return R34VideoDownloadingItem.fromMap(
+          map, whenFinish, whenError, updateInfo);
     default:
       throw UnimplementedError();
   }
@@ -535,6 +540,17 @@ extension AddDownloadExt on DownloadManager {
     }
   }
 
+  /// Adds the video in the quality labelled [quality].
+  void addR34VideoDownload(R34Video video, String quality) {
+    downloading.addLast(R34VideoDownloadingItem(
+        video, quality, _onFinish, _onError, _saveInfo));
+    _saveInfo();
+    if (!isDownloading) {
+      downloading.first.start();
+      isDownloading = true;
+    }
+  }
+
   void addFavoriteDownload(FavoriteItem comic) {
     var id = switch (comic.type.key) {
       0 => comic.target,
@@ -558,7 +574,9 @@ extension AddDownloadExt on DownloadManager {
 DownloadedItem? _getComicFromJson(String id, String json, DateTime time, [String? directory]) {
   DownloadedItem comic;
   try {
-    if (id.contains('-')) {
+    if (id.startsWith('$rule34videoKey-')) {
+      comic = R34DownloadedVideo.fromJson(jsonDecode(json));
+    } else if (id.contains('-')) {
       comic = CustomDownloadedItem.fromJson(jsonDecode(json));
     } else if (id.startsWith("jm")) {
       comic = DownloadedJmComic.fromMap(jsonDecode(json));

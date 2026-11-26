@@ -57,7 +57,8 @@ enum DownloadType {
   htmanga,
   nhentai,
   other,
-  favorite;
+  favorite,
+  rule34video;
 
   ComicType toComicType() => switch (this) {
         picacg => ComicType.picacg,
@@ -68,6 +69,7 @@ enum DownloadType {
         nhentai => ComicType.nhentai,
         other => ComicType.other,
         favorite => ComicType.other,
+        rule34video => ComicType.other,
       };
 }
 
@@ -374,7 +376,12 @@ abstract class DownloadingItem with _TransferSpeedMixin {
       type != DownloadType.ehentai &&
       type != DownloadType.hitomi &&
       type != DownloadType.htmanga &&
-      type != DownloadType.nhentai;
+      type != DownloadType.nhentai &&
+      type != DownloadType.rule34video;
+
+  /// Whether [downloadedPages] and [totalPages] count bytes of one file
+  /// rather than images.
+  bool get countsBytes => false;
 
   Stream<DownloadProgress> downloadImage(String link);
 

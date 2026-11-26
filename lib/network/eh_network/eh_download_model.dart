@@ -138,6 +138,9 @@ class EhDownloadingItem extends DownloadingItem{
   int? _totalBytes;
 
   @override
+  bool get countsBytes => downloadType != 0;
+
+  @override
   int get totalPages {
     if(downloadType == 0){
       return super.totalPages;

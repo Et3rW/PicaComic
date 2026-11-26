@@ -13,6 +13,9 @@ import 'package:pica_comic/foundation/cache_manager.dart';
 import 'package:pica_comic/foundation/history.dart';
 import 'package:pica_comic/foundation/local_favorites.dart';
 import 'package:pica_comic/foundation/log.dart';
+import 'package:pica_comic/foundation/page_translation/page_translation_service.dart';
+import 'package:pica_comic/foundation/page_translation/translation_backup.dart';
+import 'package:pica_comic/foundation/page_translation/translation_settings.dart';
 import 'package:pica_comic/network/cookie_jar.dart';
 import 'package:pica_comic/network/download.dart';
 import 'package:pica_comic/network/download_model.dart';
@@ -286,7 +289,7 @@ Future<void> checkDownloadPath() async {
 }
 
 Future<String?> _exportData(String path, String appdataString,
-    String? downloadPath, String outPath) async {
+    String? downloadPath, String outPath, List<String> extraFiles) async {
   var encode = ZipFile.open(outPath);
   try {
     var filePath = "$path${pathSep}appdata";
@@ -309,6 +312,9 @@ Future<String?> _exportData(String path, String appdataString,
         localFavorite.name, localFavorite.path.replaceAll("\\", "/"));
     encode.addFile(history.name, history.path);
     encode.addFile('cookies.db', "$path/cookies.db");
+    for (var extra in extraFiles) {
+      encode.addFile(File(extra).name, extra);
+    }
     await for (var entry in Directory("$path/comic_source").list()) {
       if (entry is File) {
         encode.addFile('comic_source/${entry.name}', entry.path);
@@ -343,15 +349,30 @@ Future<String?> _exportData(String path, String appdataString,
   }
 }
 
-Future<String> exportDataToFile(bool includeDownload, String outPath) async {
+/// Writes the user data to [outPath]. Page translation's settings go with
+/// it, and with [translationKeys] its API keys too; with [translationPages],
+/// the translated pages.
+Future<String> exportDataToFile(bool includeDownload, String outPath,
+    {bool translationKeys = true, bool translationPages = true}) async {
   var path = App.dataPath;
+  var translationDir = Directory('${App.cachePath}/translation_backup');
   try {
     var appdataString = const JsonEncoder().convert(appdata.toJson());
     var downloadPath = includeDownload ? DownloadManager().path : null;
+    var extraFiles = TranslationBackup.write(
+      translationDir,
+      settings: TranslationSettings.instance,
+      store: PageTranslationService.instance.store,
+      keys: translationKeys,
+      pages: translationPages,
+    );
     var res = await compute<List<String?>, String?>(
-        (message) =>
-            _exportData(message[0]!, message[1]!, message[2], message[3]!),
-        [path, appdataString, downloadPath, outPath]);
+        (message) => _exportData(message[0]!, message[1]!, message[2],
+            message[3]!, [
+              for (var file in message[4]!.split('\n'))
+                if (file.isNotEmpty) file
+            ]),
+        [path, appdataString, downloadPath, outPath, extraFiles.join('\n')]);
 
     if (res != null) {
       throw Exception(res);
@@ -359,6 +380,11 @@ Future<String> exportDataToFile(bool includeDownload, String outPath) async {
   } catch (e, s) {
     LogManager.addLog(LogLevel.error, "IO", "$e\n$s");
     rethrow;
+  } finally {
+    // It may hold API keys; the backup file has them now.
+    if (translationDir.existsSync()) {
+      translationDir.deleteSync(recursive: true);
+    }
   }
   return outPath;
 }
@@ -478,6 +504,23 @@ Future<bool> importData([String? filePath]) async {
       appdata.settings[46],
       (enableCheck ? "1" : "0")
     ]);
+    // Like the other files, only taken from a newer sync.
+    var fileVersion = int.parse(
+        ((const JsonDecoder().convert(data))["settings"] as List)
+                .elementAtOrNull(46) ??
+            "1");
+    if (!enableCheck || fileVersion > int.parse(appdata.settings[46])) {
+      try {
+        TranslationBackup.read(
+          Directory("$path/dataTemp"),
+          settings: TranslationSettings.instance,
+          store: PageTranslationService.instance.store,
+        );
+      } catch (e, s) {
+        // The rest of the data is in; only the translations are missing.
+        Log.error("importData", "page translation: $e\n$s");
+      }
+    }
   } catch (e, s) {
     Log.error("importData", "$e\n$s");
     return false;

@@ -17,6 +17,7 @@ import "../../tools/io_tools.dart";
 import "local_favorites.dart";
 import "local_search_page.dart";
 import "network_favorite_page.dart";
+import "random_favorite.dart";
 
 class FavoritesPageController extends StateController {
   String? current;
@@ -173,6 +174,23 @@ class FavoritesPage extends StatelessWidget with _LocalFavoritesManager {
         ]);
   }
 
+  /// How to draw at random from the folder that is open, if one is: a
+  /// local folder, or the favorites of a site without folders. A site's
+  /// folders have their own button inside them.
+  RandomDraw Function()? _randomDraw() {
+    var folder = controller.current;
+    if (controller.selectingFolder || folder == null) return null;
+    if (controller.isNetwork == false) {
+      return () => drawFromLocalFolder(folder);
+    }
+    var data = controller.networkData;
+    if (controller.isNetwork == true && data != null && !data.multiFolder) {
+      return () => drawFromNetworkFavorites(
+          sourceKeyOfFavorites(data), (page) => data.loadComic(page));
+    }
+    return null;
+  }
+
   Widget buildTopBar(BuildContext context) {
     final iconColor = Theme.of(context).colorScheme.primary;
 
@@ -281,6 +299,7 @@ class FavoritesPage extends StatelessWidget with _LocalFavoritesManager {
               style: const TextStyle(fontSize: 16),
             ).paddingBottom(3),
             const Spacer(),
+            if (_randomDraw() case var draw?) RandomFavoriteButton(draw),
             if (controller.selectingFolder)
               const Icon(Icons.keyboard_arrow_up)
             else

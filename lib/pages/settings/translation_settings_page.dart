@@ -4,7 +4,9 @@ import 'package:pica_comic/foundation/app.dart';
 import 'package:pica_comic/foundation/page_translation/model_store.dart';
 import 'package:pica_comic/foundation/page_translation/page_translation_service.dart';
 import 'package:pica_comic/foundation/page_translation/translation_settings.dart';
+import 'package:pica_comic/foundation/page_translation/translation_tasks.dart';
 import 'package:pica_comic/foundation/page_translation/translator.dart';
+import 'package:pica_comic/pages/settings/translation_tasks_page.dart';
 import 'package:pica_comic/tools/translations.dart';
 
 String translatorKindLabel(TranslatorKind kind) => switch (kind) {
@@ -53,12 +55,14 @@ class _TranslationSettingsPageState extends State<TranslationSettingsPage> {
     super.initState();
     settings.addListener(_changed);
     models.addListener(_changed);
+    TranslationTasks.instance.addListener(_changed);
   }
 
   @override
   void dispose() {
     settings.removeListener(_changed);
     models.removeListener(_changed);
+    TranslationTasks.instance.removeListener(_changed);
     super.dispose();
   }
 
@@ -88,6 +92,16 @@ class _TranslationSettingsPageState extends State<TranslationSettingsPage> {
               title: Text('图片翻译目前只支持 Android'.tl),
             ),
           _buildModels(supported),
+          ListTile(
+            leading: const Icon(Icons.pending_actions),
+            title: Text('翻译任务'.tl),
+            subtitle: Text(TranslationTasks.instance.runningCount == 0
+                ? '没有进行中的任务'.tl
+                : '@n 章正在后台翻译'.tlParams(
+                    {'n': '${TranslationTasks.instance.runningCount}'})),
+            trailing: const Icon(Icons.arrow_right),
+            onTap: () => App.globalTo(() => const TranslationTasksPage()),
+          ),
           ListTile(
             leading: const Icon(Icons.language),
             title: Text('翻译成'.tl),

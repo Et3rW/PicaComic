@@ -563,6 +563,35 @@ class NhentaiNetwork {
   Future<Res<bool>> unfavoriteComic(String id) =>
       _favoriteRequest("DELETE", id);
 
+  /// Every gallery, with no tag and no language: the newest list, or a
+  /// search when sorted by popularity or when tags are excluded.
+  Future<Res<List<NhentaiComicBrief>>> getAllComics(int page, NhentaiSort sort,
+      {String excludes = ''}) {
+    excludes = excludes.trim();
+    if (excludes.isNotEmpty) return _searchEverything(excludes, page, sort);
+    if (sort == NhentaiSort.recent) {
+      return _list('/api/v2/galleries', query: {'page': '$page'});
+    }
+    // A search needs some text; a space matches every gallery.
+    return _searchEverything(' ', page, sort);
+  }
+
+  /// A search over every gallery is slow for the site, which then sometimes
+  /// answers "no results"; asking again a little later usually works.
+  Future<Res<List<NhentaiComicBrief>>> _searchEverything(
+      String query, int page, NhentaiSort sort) async {
+    var res = await _search(query, page, sort);
+    for (var retry = 1; retry <= 2; retry++) {
+      if (res.error || res.data.isNotEmpty) break;
+      await Future<void>.delayed(retryDelay * retry);
+      res = await _search(query, page, sort);
+    }
+    return res;
+  }
+
+  /// Wait before asking again, see [_searchEverything]. Tests shorten it.
+  static Duration retryDelay = const Duration(seconds: 2);
+
   /// The comics of a category page such as `/tag/big-breasts`, through
   /// search, which takes the same namespace filter with every sort.
   Future<Res<List<NhentaiComicBrief>>> getCategoryComics(

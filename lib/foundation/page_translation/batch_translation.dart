@@ -25,19 +25,37 @@ class BatchTranslation extends ChangeNotifier {
   /// an exhausted quota would fail every page the same way.
   final int stopAfterFailures;
 
-  var _finished = 0;
-  var _failed = 0;
+  final _succeeded = <int>{};
+  final _failedPages = <int>{};
   var _failuresInARow = 0;
   var _cancelled = false;
   var _running = false;
   String? _stopReason;
 
   /// Pages done or failed so far.
-  int get finished => _finished;
+  int get finished => _succeeded.length + _failedPages.length;
 
-  int get failed => _failed;
+  int get failed => _failedPages.length;
+
+  int get succeeded => _succeeded.length;
 
   int get total => pages.length;
+
+  /// Pages translated, in any run.
+  Set<int> get succeededPages => Set.unmodifiable(_succeeded);
+
+  /// Pages that failed in the last run.
+  Set<int> get failedPages => Set.unmodifiable(_failedPages);
+
+  /// Pages not tried in the last run: it stopped early or is still going.
+  List<int> get untriedPages => [
+        for (var page in pages)
+          if (!_succeeded.contains(page) && !_failedPages.contains(page)) page,
+      ];
+
+  /// Whether some pages are left untranslated after the last run: one
+  /// failed, or the batch gave up before trying them.
+  bool get hasFailures => _failedPages.isNotEmpty || _stopReason != null;
 
   bool get isRunning => _running;
 
@@ -57,14 +75,23 @@ class BatchTranslation extends ChangeNotifier {
   }
 
   /// Runs until every page is done, the batch is cancelled or it gives up.
+  /// Pages translated by an earlier run are not translated again, so running
+  /// a finished batch again retries only the failed and untried pages.
   Future<void> run() async {
     if (_running) return;
     _running = true;
+    _failedPages.clear();
+    _failuresInARow = 0;
+    _stopReason = null;
     notifyListeners();
+    var todo = [
+      for (var page in pages)
+        if (!_succeeded.contains(page)) page,
+    ];
     var next = 0;
     Future<void> worker() async {
-      while (!_cancelled && _stopReason == null && next < pages.length) {
-        var page = pages[next++];
+      while (!_cancelled && _stopReason == null && next < todo.length) {
+        var page = todo[next++];
         String? error;
         try {
           error = await translatePage(page);
@@ -72,11 +99,11 @@ class BatchTranslation extends ChangeNotifier {
           error = '$e';
         }
         if (_cancelled) return;
-        _finished++;
         if (error == null) {
+          _succeeded.add(page);
           _failuresInARow = 0;
         } else {
-          _failed++;
+          _failedPages.add(page);
           if (++_failuresInARow >= stopAfterFailures) _stopReason = error;
         }
         notifyListeners();

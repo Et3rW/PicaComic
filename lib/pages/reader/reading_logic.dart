@@ -63,8 +63,15 @@ class ComicReadingPageLogic extends StateController {
   bool translateAll = false;
 
   /// Translates the pages of the current chapter ahead of the reader while
-  /// [translateAll] is on.
-  BatchTranslation? translationBatch;
+  /// [translateAll] is on. It goes on in the background when the reader is
+  /// closed.
+  TranslationTask? translationTask;
+
+  BatchTranslation? get translationBatch => translationTask?.batch;
+
+  /// Set when the reader is closed; a chapter that finishes loading after
+  /// that starts no translation.
+  bool closed = false;
 
   /// Whether page [index] (0-based) of the current chapter is shown translated.
   bool isTranslated(int index) => translateAll;

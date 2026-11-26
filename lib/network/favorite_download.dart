@@ -19,6 +19,9 @@ import 'package:pica_comic/network/nhentai_network/download.dart';
 import 'package:pica_comic/network/nhentai_network/nhentai_main_network.dart';
 import 'package:pica_comic/network/picacg_network/methods.dart';
 import 'package:pica_comic/network/picacg_network/picacg_download_model.dart';
+import 'package:pica_comic/network/rule34video/download.dart';
+import 'package:pica_comic/network/rule34video/models.dart';
+import 'package:pica_comic/network/rule34video/rule34video_network.dart';
 
 class FavoriteDownloading extends DownloadingItem{
   FavoriteDownloading(this.comic, super.whenFinish, super.onError,
@@ -72,6 +75,14 @@ class FavoriteDownloading extends DownloadingItem{
           downloadLogic = NhentaiDownloadingItem(nhComic.data, onFinish, onError, updateInfo, id);
         }
         default: {
+          if (comic.type.key == rule34videoKey.hashCode) {
+            var video = await Rule34VideoNetwork().getVideo(comic.target);
+            if (video.error) throw Exception(video.errorMessage);
+            downloadLogic = R34VideoDownloadingItem(video.data,
+                defaultR34Quality(video.data.sources), onFinish, onError,
+                updateInfo);
+            break;
+          }
           var comicSource = comic.type.comicSource;
           var comicInfoData = await comicSource.loadComicInfo!(comic.target);
           var downloadedEp = List.generate(comicInfoData.data.chapters?.length ?? 0, (index) => index);

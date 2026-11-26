@@ -80,7 +80,11 @@ class Webdav {
           }
         }
       }
-      await client.writeFromFile(await exportDataToFile(false, "${App.cachePath}/userdata.picadata"),
+      // No API keys on the server, and no translated pages: they only
+      // grow, and the sync uploads everything each time.
+      await client.writeFromFile(
+          await exportDataToFile(false, "${App.cachePath}/userdata.picadata",
+              translationKeys: false, translationPages: false),
           "${configs[3]}${appdata.settings[46]}.picadata");
     } catch (e, s) {
       LogManager.addLog(LogLevel.error, "Sync",
